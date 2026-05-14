@@ -31,17 +31,35 @@ def _aspect_vertical() -> str:
 
 def _video_180_half_turn_instructions() -> str:
     return (
-        "Stationary tripod camera, zero camera movement. The woman from the image, with an enhanced athletic physique (broad shoulders, toned abs, curvy hips, and full buttocks), stands in a neutral pose. She performs a single, slow, and mechanical 180-degree rotation in place around her vertical axis. She turns her back to the camera and stops. The rotation is steady and continuous with no extra gestures. Once her back is fully facing the camera, she remains perfectly still in a stable final pose until the end of the video. STRICTLY PROHIBITED: dancing, walking, jumping, arm movements, 360-degree rotation, or turning back to the front. Only a simple 180-degree turn to a static rear view."
+        "Locked tripod camera, absolutely no camera movement, zoom, or shake. "
+        "The person stands upright in a neutral catalog pose with feet planted in one spot. "
+        "Arms remain relaxed and motionless at the sides. "
+        "Facial expression remains neutral. "
+        "The person performs exactly one slow, uniform 180-degree pivot in place "
+        "(front view to back view only). "
+        "The rotation is mechanical, smooth, and constant-speed, with no pauses or extra motion. "
+        "After reaching the back-facing position, the person stops completely "
+        "and remains perfectly still until the video ends. "
+        "STRICTLY FORBIDDEN: dancing, swaying, posing, hip movement, shoulder movement, "
+        "arm gestures, walking, stepping, bouncing, head turns, smiling changes, "
+        "360-degree rotation, turning back to the front, or any additional movement."
     )
 
 
 def _video_motion_discipline() -> str:
     return (
-        "MOTION DISCIPLINE (strict): neutral calm energy only. FORBIDDEN: dancing, party/club vibe, rhythmic sway, bouncing, "
-        "jumping, runway walk, arm choreography, hip rolls, side steps, complex footwork, head nodding to a beat. "
-        "Hips and shoulders level; arms relaxed at sides or lightly on hips. "
-        "ALLOWED primary motion: one slow controlled half-turn (front → back) for body visualization—calm catalog-style pivot, "
-        "NOT a dancer or TikTok performance; total rotation must stay around half a turn, not a full turntable spin."
+        "MOTION RULES (ABSOLUTE PRIORITY): "
+        "This is a technical turntable-style body scan, not a performance. "
+        "The only permitted motion is a single controlled half-turn from front to back. "
+        "No dance-like behavior of any kind. "
+        "No rhythmic motion. "
+        "No body sway. "
+        "No hip rolls. "
+        "No runway walk. "
+        "No hand movement. "
+        "No shoulder movement. "
+        "No foot repositioning except the pivot itself. "
+        "Once the back view is reached, freeze completely."
     )
 
 
@@ -167,6 +185,7 @@ def openrouter_after_body_image_prompt(data: dict) -> str:
     female = data.get("gender") == "female"
     muscles = data.get("muscles", {}) or {}
     clauses: list[str] = []
+
     for key, _short, _em in MUSCLE_GROUPS:
         raw = muscles.get(key)
         if raw is None or raw == "":
@@ -180,25 +199,34 @@ def openrouter_after_body_image_prompt(data: dict) -> str:
         clauses.append(_after_body_zone_clause(key, p, female=female))
 
     act = _activity_label_en(str(data.get("activity", "act_mid")))
+
     if clauses:
         body = _join_after_body_clauses(clauses)
-        adjustments = f"Adjust proportions subtly: {body}."
+        adjustments = f"Apply clearly visible but realistic body changes: {body}."
     else:
         adjustments = (
-            "Adjust proportions subtly: a very light overall tightening and tone across the whole body "
-            "(about the look of a few months of training), without reshaping any one area dramatically."
+            "Apply a clearly visible but realistic full-body fitness transformation: "
+            "slightly leaner waist, firmer glutes, more toned arms and legs, "
+            "and subtle natural muscle definition."
         )
 
     return (
-        "Refine the body of the person in the image to a fit and toned aesthetic, keeping the original pose and face unchanged. "
-        "MANDATORY VISUAL CHANGE: the output must NOT be a pixel-identical copy of the input—apply a clearly visible edit to "
-        "torso/limb contours, shading, and muscle definition per the instructions below. "
+        "Edit the provided photo and create a visibly transformed 'after training' version of the same person. "
+        "The result MUST be obviously different from the original image at first glance. "
+        "MANDATORY: visibly modify the body silhouette, outer contours, and muscle definition. "
+        "The output is NOT allowed to look identical or nearly identical to the source photo. "
         f"{adjustments} "
-        "Focus on a healthy fitness-model look rather than heavy muscle mass. The skin should look smooth and the lighting natural. "
-        f"Use the profile activity only as a subtle realism hint: {act}. "
-        "Hard limits: keep the same background, framing, and camera angle as the source; do not change skin tone, "
-        "ethnicity, hairstyle, or facial identity, no new pose, no nudity or sexualized exaggeration; avoid "
-        "bodybuilding-stage bulk, vascular competition look, or caricature."
+        "Target appearance: healthy athletic fitness model, natural and believable. "
+        "The transformation should look like 6–12 months of consistent training. "
+        "Increase visible body tone, improve proportions, and tighten soft areas. "
+        "Changes must be noticeable but realistic. "
+        f"Use the activity profile only as a realism hint: {act}. "
+        "PRESERVE EXACTLY: face, facial expression, hairstyle, skin tone, ethnicity, clothing, pose, "
+        "background, framing, and camera angle. "
+        "DO NOT change identity. "
+        "DO NOT create a bodybuilder physique, extreme vascularity, exaggerated muscles, "
+        "cartoon anatomy, or sexualized proportions. "
+        "DO NOT return the original image unchanged."
     )
 
 
