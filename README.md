@@ -10,7 +10,6 @@ Telegram-бот для фитнес-сценариев: анкета, реком
    - `BOT_TOKEN`
    - `GOOGLE_AI_API_KEY`
    - `OPENROUTER_API_KEY`
-   - `KIE_API_KEY` (если используется соответствующий flow)
    - `WAN_API_KEY` (если используется соответствующий flow)
 4. Установите зависимости:
    - `pip install -r requirements.txt`

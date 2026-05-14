@@ -18,6 +18,15 @@ class CB:
     EDIT_BACK = "edit_back"
 
     WORKOUT = "get_workout"
+    # Календарь тренировок по неделям (см. workout_plan_kb)
+    PLAN_W1 = "pl_w1"
+    PLAN_W2 = "pl_w2"
+    PLAN_W3 = "pl_w3"
+    PLAN_W4 = "pl_w4"
+    PLAN_TODAY = "pl_td"
+    PLAN_HUB_BACK = "pl_bk"
+    PLAN_RESET = "pl_rs"
+
     NUTRITION = "get_nutrition"
     MEASUREMENTS = "body_measurements"
     MEASUREMENTS_VIEW = "body_measurements_view"

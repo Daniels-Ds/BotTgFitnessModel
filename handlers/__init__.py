@@ -1,11 +1,11 @@
 """
-Хендлеры бота: онбординг, два видео: кадр «после» через отдельный ai-app, затем 360°; резерв — OpenRouter.
+Хендлеры бота: онбординг, два видео Wan 2.2 i2v (DashScope); кадр «после» — Qwen Image Edit.
 """
 
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
 import logging
 import re
 import time
@@ -13,11 +13,19 @@ from pathlib import Path
 from aiogram import Dispatcher, F, Router
 from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, InputMediaPhoto, InputMediaVideo, Message
 
 from core.callbacks import CB
 from core.tasks import task_manager
-from db import get_latest_body_measurement, save_body_measurement
+from db import (
+    clear_workout_plan,
+    get_latest_body_measurement,
+    get_workout_ready_weeks,
+    get_workout_week_body,
+    save_body_measurement,
+    save_workout_week_body,
+)
 from keyboards import (
     activity_kb,
     edit_menu_kb,
@@ -27,6 +35,7 @@ from keyboards import (
     video_fallback_kb,
     water_footer_kb,
     welcome_kb,
+    workout_plan_kb,
 )
 from messages import (
     ASK_ACTIVITY,
@@ -56,32 +65,38 @@ from messages import (
     VIDEOS_READY,
     WELCOME,
     MEASUREMENTS_START,
+    WORKOUT_PLAN_CLEARED,
+    WORKOUT_PLAN_EMPTY,
+    WORKOUT_TODAY_REST,
+    WORKOUT_WEEK_FAIL,
+    WORKOUT_WEEK_LOCKED,
     ask_muscles,
     profile_summary,
     progress_msg,
     progress_msg_photo_preview,
+    workout_generating_week_html,
+    workout_plan_hub_html,
+    workout_today_train_html,
 )
 from prompts import (
+    body_measurements_overlay_prompt,
     nutrition_prompt,
     openrouter_after_body_image_prompt,
     veo_after_prompt,
     veo_current_prompt,
     water_hint_text,
-    workout_prompt,
+    workout_prompt_week,
 )
+from services.dashscope_qwen_image_edit_client import (
+    edit_after_body_image_qwen,
+    edit_measurements_overlay_qwen,
+)
+from services.dashscope_wan_i2v_client import generate_wan_i2v_video
+from services.dashscope_text_client import ask_dashscope_text
 from services.gemini_service import generate_workout
-from services.openrouter_image_client import generate_after_reference_image
-from services.openrouter_text_client import ask_openrouter_text
-from config import USE_WAN_FOR_VIDEO
+from config import DASHSCOPE_API_KEY, USE_WAN_FOR_VIDEO
 from states import Measurements, Onboarding, PostGen
 from utils import init_ui, remove_all_html
-from wan_client import (
-    generate_after_body_image_via_rh,
-    generate_video,
-    generate_video_after,
-    submit_measurements_to_rh,
-)
-
 router = Router()
 logger = logging.getLogger(__name__)
 
@@ -110,33 +125,47 @@ async def safe_answer(cb: CallbackQuery, text: str | None = None, alert: bool = 
 
 def _hide_service_names(text: str) -> str:
     cleaned = text or ""
-    for token in ("RunningHub", "runninghub", "OpenRouter", "openrouter", "KIE", "kie.ai", "Gemini", "VEO", "WAN"):
+    for token in (
+        "RunningHub",
+        "runninghub",
+        "OpenRouter",
+        "openrouter",
+        "DashScope",
+        "dashscope",
+        "Model Studio",
+        "Alibaba",
+        "Gemini",
+        "VEO",
+        "WAN",
+    ):
         cleaned = cleaned.replace(token, "сервис")
     return cleaned
 
 
 async def safe_generate_video(prompt: str, photo: bytes):
     async with veo_lock:
-        return await generate_video(prompt, photo)
+        return await generate_wan_i2v_video(prompt, photo)
 
 
 async def safe_generate_video_after(prompt: str, photo: bytes):
     async with veo_lock:
-        return await generate_video_after(prompt, photo)
+        return await generate_wan_i2v_video(prompt, photo)
 
 
 async def _prepare_photo_after(photo: bytes, data: dict) -> bytes:
-    """Сначала (ai-app кадра «после»), при ошибке - исходный референс."""
+    """Qwen Image Edit (референс + текст); при ошибке — исходный референс."""
+    logger.info("after-body: Qwen edit start input_bytes=%s", len(photo))
     prompt = openrouter_after_body_image_prompt(data)
-    async with veo_lock:
-        rh_img, rh_reason = await generate_after_body_image_via_rh(prompt, photo)
-    if rh_img:
-        return rh_img
-    logger.warning("RunningHub after-image failed (%s), trying OpenRouter", rh_reason)
-    or_img = await generate_after_reference_image(photo, prompt)
-    if or_img:
-        return or_img
-    logger.warning("OpenRouter after-image failed, using original reference for second slot")
+    q_img = await edit_after_body_image_qwen(photo, prompt)
+    if q_img:
+        if q_img == photo:
+            logger.warning(
+                "after-body: Qwen returned same bytes as input — API accepted request but likely skipped real edit"
+            )
+        return q_img
+    logger.warning(
+        "after-body: Qwen returned None (see Qwen image edit logs above) — using original photo for second slot"
+    )
     return photo
 
 
@@ -182,18 +211,36 @@ def _measurements_prompt(values: dict[str, int]) -> str:
 async def _refresh_muscle_board(cb: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     selected = data.get("muscles") or {}
-    try:
-        await cb.message.edit_text(
-            ask_muscles(),
-            parse_mode="HTML",
-            reply_markup=muscle_kb(selected),
-        )
-    except Exception:
-        await cb.message.answer(
-            ask_muscles(),
-            parse_mode="HTML",
-            reply_markup=muscle_kb(selected),
-        )
+    text = ask_muscles()
+    kb = muscle_kb(selected)
+
+    edit_ok = False
+    for i in range(3):
+        try:
+            await cb.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+            edit_ok = True
+            break
+        except TelegramBadRequest as e:
+            low = str(e).lower()
+            if "message is not modified" in low or "message_not_modified" in low:
+                return
+            break
+        except TelegramNetworkError as e:
+            logger.warning("muscle_board edit network try %s/3: %s", i + 1, e)
+            if i < 2:
+                await asyncio.sleep(0.25 * (2**i))
+    if edit_ok:
+        return
+
+    for i in range(3):
+        try:
+            await cb.message.answer(text, parse_mode="HTML", reply_markup=kb)
+            return
+        except TelegramNetworkError as e:
+            logger.warning("muscle_board answer network try %s/3: %s", i + 1, e)
+            if i == 2:
+                raise
+            await asyncio.sleep(0.25 * (2**i))
 
 
 # ─── /start ───────────────────────────────────
@@ -493,33 +540,143 @@ async def retry_video(cb: CallbackQuery, state: FSMContext) -> None:
     await _run_video_generation(cb, state)
 
 
-# ─── Тренировки ───────────────────────────────
+# ─── Тренировки (календарь по неделям) ───────────────────────────────
+
+
+async def _send_workout_chunks(message: Message, text: str, *, header: str = "") -> None:
+    body = remove_all_html(text)
+    if header:
+        body = header.rstrip() + "\n\n" + body
+    for i in range(0, len(body), 4000):
+        await message.answer(body[i : i + 4000])
 
 
 @router.callback_query(F.data == CB.WORKOUT)
-async def cb_get_workout(cb: CallbackQuery, state: FSMContext) -> None:
+async def cb_workout_open_hub(cb: CallbackQuery, state: FSMContext) -> None:
+    await cb.answer()
+    uid = cb.from_user.id if cb.from_user else 0
+    ready = await get_workout_ready_weeks(uid)
+    await cb.message.answer(
+        workout_plan_hub_html(ready),
+        parse_mode="HTML",
+        reply_markup=workout_plan_kb(ready),
+    )
+
+
+@router.callback_query(F.data.in_({CB.PLAN_W1, CB.PLAN_W2, CB.PLAN_W3, CB.PLAN_W4}))
+async def cb_workout_week(cb: CallbackQuery, state: FSMContext) -> None:
     if await reject_if_busy(cb):
         return
-    user_id = cb.from_user.id
+    if not cb.data or not cb.from_user:
+        await safe_answer(cb)
+        return
+    week_map = {CB.PLAN_W1: 1, CB.PLAN_W2: 2, CB.PLAN_W3: 3, CB.PLAN_W4: 4}
+    week = week_map[cb.data]
+    uid = cb.from_user.id
+    ready = await get_workout_ready_weeks(uid)
+    if week > 1 and (week - 1) not in ready:
+        await cb.answer(WORKOUT_WEEK_LOCKED, show_alert=True)
+        return
     await cb.answer()
+    cached = await get_workout_week_body(uid, week)
+    if cached:
+        await _send_workout_chunks(
+            cb.message,
+            cached,
+            header=f"Неделя {week} · из памяти бота",
+        )
+        return
     data = await state.get_data()
-    prompt = workout_prompt(data)
-    loading = await cb.message.answer("⏳ Генерирую программу…")
+    loading = await cb.message.answer(
+        workout_generating_week_html(week),
+        parse_mode="HTML",
+    )
+    prev = await get_workout_week_body(uid, week - 1) if week > 1 else None
+    excerpt = (prev[-3200:] if prev else None)
+    prompt = workout_prompt_week(data, week, excerpt)
+    result: str | None = None
     try:
-        await task_manager.run(user_id, "workout")
-        result = await generate_workout(prompt)
+        await task_manager.run(uid, "workout")
+        result = await generate_workout(prompt, max_tokens=2200)
     finally:
-        task_manager.release(user_id)
+        task_manager.release(uid)
     try:
         await loading.delete()
     except Exception:
         pass
     if not result:
-        await cb.message.answer("❌ Не удалось получить ответ. Попробуйте позже.")
+        await cb.message.answer(WORKOUT_WEEK_FAIL)
         return
     text = remove_all_html(result)
-    for i in range(0, len(text), 4000):
-        await cb.message.answer(text[i : i + 4000])
+    await save_workout_week_body(uid, week, text)
+    await _send_workout_chunks(cb.message, text, header=f"Неделя {week}")
+    ready2 = await get_workout_ready_weeks(uid)
+    try:
+        await cb.message.edit_reply_markup(reply_markup=workout_plan_kb(ready2))
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == CB.PLAN_TODAY)
+async def cb_workout_today(cb: CallbackQuery, state: FSMContext) -> None:
+    await cb.answer()
+    uid = cb.from_user.id if cb.from_user else 0
+    wd = date.today().weekday()
+    names = (
+        "понедельник",
+        "вторник",
+        "среда",
+        "четверг",
+        "пятница",
+        "суббота",
+        "воскресенье",
+    )
+    ready = await get_workout_ready_weeks(uid)
+    kb = workout_plan_kb(ready)
+    if wd not in (0, 2, 4):
+        await cb.message.answer(WORKOUT_TODAY_REST, parse_mode="HTML", reply_markup=kb)
+    else:
+        await cb.message.answer(
+            workout_today_train_html(names[wd]),
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+
+
+@router.callback_query(F.data == CB.PLAN_RESET)
+async def cb_workout_plan_reset(cb: CallbackQuery, state: FSMContext) -> None:
+    if not cb.from_user:
+        await safe_answer(cb)
+        return
+    uid = cb.from_user.id
+    ready = await get_workout_ready_weeks(uid)
+    if not ready:
+        await cb.answer(WORKOUT_PLAN_EMPTY, show_alert=True)
+        return
+    await clear_workout_plan(uid)
+    await cb.answer(WORKOUT_PLAN_CLEARED, show_alert=True)
+    ready2 = await get_workout_ready_weeks(uid)
+    try:
+        await cb.message.edit_text(
+            workout_plan_hub_html(ready2),
+            parse_mode="HTML",
+            reply_markup=workout_plan_kb(ready2),
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == CB.PLAN_HUB_BACK)
+async def cb_workout_hub_back(cb: CallbackQuery, state: FSMContext) -> None:
+    await cb.answer()
+    try:
+        await cb.message.edit_text(
+            POST_GEN_MENU,
+            parse_mode="HTML",
+            reply_markup=post_gen_kb(),
+        )
+    except Exception:
+        await cb.message.answer(POST_GEN_MENU, parse_mode="HTML", reply_markup=post_gen_kb())
 
 
 # ─── Питание + вода ───────────────────────────
@@ -535,7 +692,7 @@ async def get_nutrition(cb: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     loading = await cb.message.answer("🥗 Готовлю основы питания…")
     try:
-        result = await ask_openrouter_text(nutrition_prompt(data), max_tokens=600)
+        result = await ask_dashscope_text(nutrition_prompt(data), max_tokens=600)
     finally:
         _active_tasks.pop(user_id, None)
     try:
@@ -665,6 +822,8 @@ async def view_measurements(cb: CallbackQuery, state: FSMContext) -> None:
         text += "\n✅ Обработано"
         if rec["runninghub_result_url"]:
             text += f"\nРезультат: {rec['runninghub_result_url']}"
+        else:
+            text += "\nФото с подписями замеров отправлялось в чат при сохранении."
     else:
         text += "\n⚠️ Результат пока недоступен"
     await cb.message.answer(text, parse_mode="HTML", reply_markup=post_gen_kb())
@@ -779,14 +938,31 @@ async def meas_photo(message: Message, state: FSMContext) -> None:
         return
 
     _active_tasks[user_id] = "measurements"
-    loading = await message.answer("⏳ Сохраняю замеры...")
+    loading = await message.answer("⏳ Рисую подписи с замерами на фото…")
     task_id = ""
     output_url = ""
-    reason = "Функция генерации сейчас в разработке."
+    reason = ""
     status = "error"
     try:
-        # Временно отключено по запросу: сохраняем замеры без запуска внешней генерации.
-        _ = (photo_bytes, measurements)
+        if not (DASHSCOPE_API_KEY or "").strip():
+            reason = "Не задан ключ API для генерации изображения (DASHSCOPE_API_KEY / ALIBABA_MODEL_STUDIO_API_KEY)."
+        else:
+            prompt = body_measurements_overlay_prompt(measurements)
+            overlay = await edit_measurements_overlay_qwen(photo_bytes, prompt)
+            if overlay:
+                await message.answer_photo(
+                    BufferedInputFile(overlay, filename="zamery.png"),
+                    caption="📏 Фото с подписями замеров (см).",
+                )
+                status = "ok"
+                task_id = "dashscope-qwen-overlay"
+            else:
+                reason = (
+                    "Не удалось получить изображение. Попробуйте другое фото (полный рост, ровный свет) или позже."
+                )
+    except Exception as e:
+        logger.exception("measurements overlay: %s", e)
+        reason = str(e) or "ошибка генерации"
     finally:
         _active_tasks.pop(user_id, None)
         try:
@@ -806,11 +982,9 @@ async def meas_photo(message: Message, state: FSMContext) -> None:
 
     text = _measurements_text(measurements) + "\n\n✅ Замеры сохранены."
     if status == "ok":
-        text += "\nЗадача отправлена."
-        if output_url:
-            text += f"\nРезультат: {output_url}"
+        text += "\nФото с подписями отправлено выше."
     else:
-        text += "\n⚠️ Генерация сейчас в разработке, но данные сохранены в базе."
+        text += "\n⚠️ Подписи на фото сгенерировать не удалось; замеры в базе сохранены."
         if reason:
             if "sensitive" in reason.lower() or "e005" in reason.lower():
                 text += "\nПричина: запрос отклонён по контент-политике. Попробуйте другое фото (более нейтральное) или повторите позже."

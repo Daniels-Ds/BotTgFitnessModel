@@ -65,6 +65,35 @@ def muscle_kb(selected: dict) -> InlineKeyboardMarkup:
     return kb(rows)
 
 
+def _workout_week_btn_label(week_no: int, ready: set[int]) -> str:
+    can_open = week_no == 1 or (week_no - 1) in ready
+    if week_no in ready:
+        return f"✅ Неделя {week_no}"
+    if not can_open:
+        return f"🔒 Неделя {week_no}"
+    return f"📌 Неделя {week_no}"
+
+
+def workout_plan_kb(ready: set[int]) -> InlineKeyboardMarkup:
+    """Календарь: 4 недели по порядку, «Сегодня», сброс, назад в пост-меню."""
+    r = ready
+    return kb(
+        [
+            [
+                btn(_workout_week_btn_label(1, r), CB.PLAN_W1),
+                btn(_workout_week_btn_label(2, r), CB.PLAN_W2),
+            ],
+            [
+                btn(_workout_week_btn_label(3, r), CB.PLAN_W3),
+                btn(_workout_week_btn_label(4, r), CB.PLAN_W4),
+            ],
+            [btn("📆 Что по плану сегодня", CB.PLAN_TODAY)],
+            [btn("🗑 Сбросить сохранённые недели", CB.PLAN_RESET)],
+            [btn("◀️ В меню после видео", CB.PLAN_HUB_BACK)],
+        ]
+    )
+
+
 def post_gen_kb() -> InlineKeyboardMarkup:
     return kb(
         [
@@ -72,7 +101,7 @@ def post_gen_kb() -> InlineKeyboardMarkup:
             [btn("📏 Ввести замеры тела", CB.MEASUREMENTS)],
             [btn("📊 Посмотреть замеры", CB.MEASUREMENTS_VIEW)],
             [btn("✏️ Изменить параметры", CB.EDIT)],
-            [btn("🏋️ Программа тренировок (3 мес.)", CB.WORKOUT)],
+            [btn("🏋️ План тренировок", CB.WORKOUT)],
             [btn("🥗 Основы питания", CB.NUTRITION)],
             [btn("🔄 С начала", CB.RESTART)],
         ]
@@ -106,7 +135,7 @@ def video_fallback_kb() -> InlineKeyboardMarkup:
     return kb(
         [
             [btn("🔁 Повторить видео", CB.CONFIRM)],
-            [btn("🏋️ Программа тренировок", CB.WORKOUT)],
+            [btn("🏋️ План тренировок", CB.WORKOUT)],
             [btn("🥗 Основы питания", CB.NUTRITION)],
             [btn("🔄 С начала", CB.RESTART)],
         ]

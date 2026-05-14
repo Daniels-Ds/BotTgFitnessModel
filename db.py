@@ -36,6 +36,15 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS workout_weeks (
+                user_id INTEGER NOT NULL,
+                week_no INTEGER NOT NULL CHECK(week_no BETWEEN 1 AND 4),
+                body TEXT NOT NULL DEFAULT '',
+                updated_at REAL DEFAULT (unixepoch()),
+                PRIMARY KEY (user_id, week_no)
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS body_measurements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -224,3 +233,50 @@ async def get_latest_body_measurement(user_id: int) -> Optional[Dict[str, Any]]:
                 "runninghub_result_url": str(row[8] or ""),
                 "created_at": float(row[9] or 0),
             }
+
+
+# ── Workout plan (4 weeks, stored separately) ───────────────────────────
+
+
+async def get_workout_ready_weeks(user_id: int) -> set[int]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT week_no FROM workout_weeks WHERE user_id = ? AND length(trim(body)) > 0",
+            (user_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return {int(r[0]) for r in rows}
+
+
+async def get_workout_week_body(user_id: int, week_no: int) -> Optional[str]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT body FROM workout_weeks WHERE user_id = ? AND week_no = ?",
+            (user_id, week_no),
+        ) as cur:
+            row = await cur.fetchone()
+            if not row or not str(row[0] or "").strip():
+                return None
+            return str(row[0])
+
+
+async def save_workout_week_body(user_id: int, week_no: int, body: str) -> None:
+    text = (body or "").strip()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO workout_weeks(user_id, week_no, body, updated_at)
+            VALUES (?, ?, ?, unixepoch())
+            ON CONFLICT(user_id, week_no) DO UPDATE SET
+                body = excluded.body,
+                updated_at = excluded.updated_at
+            """,
+            (user_id, week_no, text),
+        )
+        await db.commit()
+
+
+async def clear_workout_plan(user_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM workout_weeks WHERE user_id = ?", (user_id,))
+        await db.commit()

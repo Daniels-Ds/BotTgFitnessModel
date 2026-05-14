@@ -6,61 +6,78 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY")
 HTTPS_PROXY = os.getenv("HTTPS_PROXY") or None
+# RunningHub (опционально): только для runninghub_text_client, если зададите RH_TEXT_WEBAPP_ID + WAN_API_KEY.
 WAN_API_KEY = os.getenv("WAN_API_KEY")
 WAN_BASE_URL = os.getenv("WAN_BASE_URL", "https://www.runninghub.cn")
-WAN_WEBAPP_ID = os.getenv("WAN_WEBAPP_ID", "2044172566255902722")
-# Кадр «после» (референс → картинка) через отдельный ai-app, затем эта картинка уходит в WAN_WEBAPP_ID на 360°.
-# Шаблон Qwen Image Edit: LoadImage «7» → VAEEncode / TextEncodeQwenImageEditPlus; промпт зашит в узле 27 — по умолчанию не шлём.
-WAN_AFTER_IMAGE_WEBAPP_ID = os.getenv("WAN_AFTER_IMAGE_WEBAPP_ID", "2051297563692810242").strip()
-WAN_AFTER_IMAGE_NODE_IMAGE = os.getenv("WAN_AFTER_IMAGE_NODE_IMAGE", "7").strip()
-WAN_AFTER_IMAGE_NODE_PROMPT = os.getenv("WAN_AFTER_IMAGE_NODE_PROMPT", "").strip()
-WAN_AFTER_IMAGE_FIELD_IMAGE = os.getenv("WAN_AFTER_IMAGE_FIELD_IMAGE", "image").strip()
-WAN_AFTER_IMAGE_FIELD_PROMPT = os.getenv("WAN_AFTER_IMAGE_FIELD_PROMPT", "prompt").strip()
-WAN_AFTER_IMAGE_DURATION_NODE_ID = os.getenv("WAN_AFTER_IMAGE_DURATION_NODE_ID", "").strip()
-WAN_WEBAPP_ID_AFTER = os.getenv("WAN_WEBAPP_ID_AFTER", WAN_WEBAPP_ID or "")
-WAN_MEASUREMENTS_WEBAPP_ID = os.getenv("WAN_MEASUREMENTS_WEBAPP_ID", "").strip()
-WAN_MEASUREMENTS_NODE_IMAGE = os.getenv("WAN_MEASUREMENTS_NODE_IMAGE", "7").strip()
-WAN_MEASUREMENTS_FIELD_IMAGE = os.getenv("WAN_MEASUREMENTS_FIELD_IMAGE", "image").strip()
-WAN_MEASUREMENTS_NODE_PROMPT = os.getenv("WAN_MEASUREMENTS_NODE_PROMPT", "").strip()
-WAN_MEASUREMENTS_FIELD_PROMPT = os.getenv("WAN_MEASUREMENTS_FIELD_PROMPT", "prompt").strip()
-WAN_UPLOAD_URL = os.getenv("WAN_UPLOAD_URL", "https://www.runninghub.cn/task/openapi/upload")
-RH_TEXT_WEBAPP_ID = os.getenv("RH_TEXT_WEBAPP_ID", WAN_WEBAPP_ID or "")
+RH_TEXT_WEBAPP_ID = os.getenv("RH_TEXT_WEBAPP_ID", "").strip()
 RH_TEXT_PROMPT_NODE_ID = os.getenv("RH_TEXT_PROMPT_NODE_ID", "176")
 RH_TEXT_PROMPT_FIELD_NAME = os.getenv("RH_TEXT_PROMPT_FIELD_NAME", "text")
 RH_TEXT_MAX_WAIT_SEC = int(os.getenv("RH_TEXT_MAX_WAIT_SEC", "180"))
 
-# KIE.ai (генерация фото по замерам)
-KIE_API_KEY = os.getenv("KIE_API_KEY", "").strip()
-KIE_BASE_URL = os.getenv("KIE_BASE_URL", "https://api.kie.ai").strip()
-KIE_UPLOAD_BASE_URL = os.getenv("KIE_UPLOAD_BASE_URL", "https://kieai.redpandaai.co").strip()
-KIE_UPLOAD_PATH = os.getenv("KIE_UPLOAD_PATH", "images/user-uploads").strip()
-KIE_IMAGE_MODEL = os.getenv("KIE_IMAGE_MODEL", "flux-kontext-pro").strip()
-KIE_IMAGE_ASPECT_RATIO = os.getenv("KIE_IMAGE_ASPECT_RATIO", "9:16").strip()
-KIE_IMAGE_MAX_WAIT_SEC = int(os.getenv("KIE_IMAGE_MAX_WAIT_SEC", "180"))
-
-# OpenRouter (для тренировок/питания вместо RunningHub)
+# OpenRouter (опционально, legacy; чат и резерв картинки — через DashScope ниже)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_CHAT_COMPLETIONS_URL = os.getenv(
     "OPENROUTER_CHAT_COMPLETIONS_URL",
     "https://openrouter.ai/api/v1/chat/completions",
 )
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "qwen/qwen3.6-flash")
-# Модель с output modality image: резерв, если RunningHub (WAN_AFTER_IMAGE_WEBAPP_ID) не вернул картинку.
+# Модель с output modality image (legacy OpenRouter; основной поток — Qwen Image Edit в DashScope).
 # Резерв при отказе/пустом ответе — OPENROUTER_IMAGE_FALLBACK_MODEL (slug с openrouter.ai/models?output_modalities=image).
 OPENROUTER_IMAGE_MODEL = os.getenv("OPENROUTER_IMAGE_MODEL", "sourceful/riverflow-v2-max-preview")
 OPENROUTER_IMAGE_FALLBACK_MODEL = os.getenv("OPENROUTER_IMAGE_FALLBACK_MODEL", "").strip()
+
+# Alibaba Model Studio / DashScope (тот же ключ, что в консоли Model Studio → API Key)
+DASHSCOPE_API_KEY = (
+    os.getenv("DASHSCOPE_API_KEY") or os.getenv("ALIBABA_MODEL_STUDIO_API_KEY") or ""
+).strip()
+# Хост API (без слэша в конце). Singapore intl по умолчанию; для ключа региона Beijing: https://dashscope.aliyuncs.com
+DASHSCOPE_HTTP_ORIGIN = os.getenv("DASHSCOPE_HTTP_ORIGIN", "https://dashscope-intl.aliyuncs.com").rstrip("/")
+DASHSCOPE_CHAT_COMPLETIONS_URL = os.getenv(
+    "DASHSCOPE_CHAT_COMPLETIONS_URL",
+    f"{DASHSCOPE_HTTP_ORIGIN}/compatible-mode/v1/chat/completions",
+).strip()
+DASHSCOPE_TEXT_MODEL = os.getenv("DASHSCOPE_TEXT_MODEL", "qwen-plus").strip()
+# Qwen Image Edit: только оверлей замеров на фото (см. body_measurements_overlay_prompt).
+DASHSCOPE_QWEN_IMAGE_EDIT_MODEL = os.getenv(
+    "DASHSCOPE_QWEN_IMAGE_EDIT_MODEL",
+    "qwen-image-2.0",
+).strip()
+# Кадр «после»: slug из списка моделей Model Studio (intl), не «человеческое» имя — иначе 400 Model not exist.
+# См. https://www.alibabacloud.com/help/en/model-studio/models — серия qwen-image-edit-plus.
+DASHSCOPE_QWEN_IMAGE_EDIT_AFTER_MODEL = os.getenv(
+    "DASHSCOPE_QWEN_IMAGE_EDIT_AFTER_MODEL",
+    "qwen-image-edit-plus",
+).strip()
+# Для кадра «после»: prompt_extend часто переписывает промпт и модель остаётся «слишком близко» к исходнику — по умолчанию выкл.
+DASHSCOPE_QWEN_AFTER_PROMPT_EXTEND = os.getenv(
+    "DASHSCOPE_QWEN_AFTER_PROMPT_EXTEND", "false"
+).strip().lower() in ("1", "true", "yes")
+DASHSCOPE_QWEN_IMAGE_EDIT_SIZE = os.getenv("DASHSCOPE_QWEN_IMAGE_EDIT_SIZE", "1080*1920").strip()
+# Видео Wan 2.2 image-to-video (полуоборот ~180°, async task)
+DASHSCOPE_WAN_I2V_MODEL = os.getenv("DASHSCOPE_WAN_I2V_MODEL", "wan2.2-i2v-plus").strip()
+DASHSCOPE_WAN_I2V_RESOLUTION = os.getenv("DASHSCOPE_WAN_I2V_RESOLUTION", "480P").strip()
+DASHSCOPE_WAN_I2V_PROMPT_EXTEND = os.getenv("DASHSCOPE_WAN_I2V_PROMPT_EXTEND", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+# Wan i2v: prompt_extend часто добавляет «киношную» динамику (вплоть до танца); negative_prompt — подавляет танец/клип.
+DASHSCOPE_WAN_I2V_NEGATIVE_PROMPT = os.getenv(
+    "DASHSCOPE_WAN_I2V_NEGATIVE_PROMPT",
+    "dancing, dance moves, rhythmic sway, bouncing, jumping, twirling, leg kicks, arm choreography, runway walk, "
+    "music video, party, nightclub, hip rolls, exaggerated posing, aerobic steps, side-to-side footwork, head bopping, "
+    "zoom in, dolly in, camera orbit, handheld shake, fast cuts, jump cuts, lens flare, text overlay, watermark, "
+    "nudity, lingerie, sexualized posing",
+).strip()
+DASHSCOPE_VIDEO_POLL_INTERVAL_SEC = float(os.getenv("DASHSCOPE_VIDEO_POLL_INTERVAL_SEC", "4"))
+DASHSCOPE_VIDEO_MAX_WAIT_SEC = int(os.getenv("DASHSCOPE_VIDEO_MAX_WAIT_SEC", "600"))
 
 # В промпты (WAN / OpenRouter image) уходят «смягчённые» проценты зон: иначе модели завышают эффект.
 # UI по-прежнему 10/20/30; здесь множитель и потолок для текста промптов.
 MUSCLE_PROMPT_SCALE = float(os.getenv("MUSCLE_PROMPT_SCALE", "0.55"))
 MUSCLE_PROMPT_MAX_PCT = int(os.getenv("MUSCLE_PROMPT_MAX_PCT", "18"))
 
-# Опционально: если в ai-app есть узел под соотношение сторон (из JSON workflow), задайте id/поле/значение.
-WAN_ASPECT_NODE_ID = os.getenv("WAN_ASPECT_NODE_ID", "").strip()
-WAN_ASPECT_FIELD_NAME = os.getenv("WAN_ASPECT_FIELD_NAME", "value").strip()
-WAN_ASPECT_FIELD_VALUE = os.getenv("WAN_ASPECT_FIELD_VALUE", "9:16").strip()
-
-# USE_WAN_FOR_VIDEO=0 — только превью: два фото (реф + OpenRouter), без RunningHub. По умолчанию включены два видео WAN.
+# USE_WAN_FOR_VIDEO=0 — только превью: два фото (реф + Qwen «после»), без видео Wan i2v.
 USE_WAN_FOR_VIDEO = os.getenv("USE_WAN_FOR_VIDEO", "1").strip().lower() in ("1", "true", "yes")
 
 # ⚡ ВАЖНО: быстрая модель Gemini
