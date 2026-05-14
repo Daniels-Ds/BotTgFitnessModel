@@ -31,14 +31,7 @@ def _aspect_vertical() -> str:
 
 def _video_180_half_turn_instructions() -> str:
     return (
-        "MANDATORY half rotation (~180°), but NOT a full 360° rotation: the camera is mounted on a tripod; only the subject is moving. "
-        "TURN to face the camera (front/full-face) according to the orientation of the original image."
-        "Then ONE slow continuous rotation in place around a vertical axis (the legs are mostly stationary, the whole body rotates as a whole)."
-        "watch the video in three quarters until the person finishes shooting with their back turned away from the camera-a stable final pose with their back completely turned to the viewer."
-        "Hold or slightly press on this rear view for the last segment; do not turn in profile anymore and do not return to the front side."
-        "Clothes and physique are all the same; it feels like you're doing fitness, but only from the front → back."
-        "PROHIBITED: full 360° forward rotation, sudden jumps, instantaneous angle changes, tricks in orbit/cart, walking in circles, and dancing are prohibited"
-        "fly to ~180°, then turn back."
+        "Stationary tripod camera, zero camera movement. The woman from the image, with an enhanced athletic physique (broad shoulders, toned abs, curvy hips, and full buttocks), stands in a neutral pose. She performs a single, slow, and mechanical 180-degree rotation in place around her vertical axis. She turns her back to the camera and stops. The rotation is steady and continuous with no extra gestures. Once her back is fully facing the camera, she remains perfectly still in a stable final pose until the end of the video. STRICTLY PROHIBITED: dancing, walking, jumping, arm movements, 360-degree rotation, or turning back to the front. Only a simple 180-degree turn to a static rear view."
     )
 
 
