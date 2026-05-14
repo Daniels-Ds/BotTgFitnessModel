@@ -51,6 +51,20 @@ def _task_status(body: Mapping[str, Any]) -> str:
     return ""
 
 
+def _image_data_url_for_wan(image_bytes: bytes) -> str:
+    """Корректный data URL: Qwen отдаёт PNG, Telegram — часто JPEG; Wan не должен получать PNG с заголовком image/jpeg."""
+    b64 = base64.b64encode(image_bytes).decode("ascii")
+    if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime = "image/png"
+    elif image_bytes.startswith(b"\xff\xd8\xff"):
+        mime = "image/jpeg"
+    elif image_bytes.startswith(b"RIFF") and len(image_bytes) > 12 and image_bytes[8:12] == b"WEBP":
+        mime = "image/webp"
+    else:
+        mime = "image/jpeg"
+    return f"data:{mime};base64,{b64}"
+
+
 async def generate_wan_i2v_video(
     prompt: str,
     image_bytes: bytes,
@@ -65,8 +79,12 @@ async def generate_wan_i2v_video(
         logger.error("DASHSCOPE_API_KEY / ALIBABA_MODEL_STUDIO_API_KEY is not set")
         return None, "config"
 
-    b64 = base64.b64encode(image_bytes).decode("ascii")
-    img_url = f"data:image/jpeg;base64,{b64}"
+    img_url = _image_data_url_for_wan(image_bytes)
+    logger.info(
+        "Wan i2v submit first_frame bytes=%s data_url_prefix=%s…",
+        len(image_bytes),
+        img_url[:32],
+    )
 
     body: dict[str, Any] = {
         "model": DASHSCOPE_WAN_I2V_MODEL,

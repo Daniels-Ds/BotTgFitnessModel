@@ -241,6 +241,8 @@ def veo_after_prompt(data: dict) -> str:
 
     return f"""{subject} in athletic wear, seamless white cyclorama studio. One continuous clip: in-app preview labeled “after training”.
 
+REFERENCE STILL: The first frame is already the edited “after training” portrait (retouched leaner/toned)—preserve that improved silhouette through the whole clip; do NOT revert toward a heavier or untrained baseline during motion.
+
 {_aspect_vertical()}
 
 {_video_180_half_turn_instructions()}
