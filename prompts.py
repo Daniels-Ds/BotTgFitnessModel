@@ -31,18 +31,8 @@ def _aspect_vertical() -> str:
 
 def _video_180_half_turn_instructions() -> str:
     return (
-        "Locked tripod camera, absolutely no camera movement, zoom, or shake. "
-        "The person stands upright in a neutral catalog pose with feet planted in one spot. "
-        "Arms remain relaxed and motionless at the sides. "
-        "Facial expression remains neutral. "
-        "The person performs exactly one slow, uniform 180-degree pivot in place "
-        "(front view to back view only). "
-        "The rotation is mechanical, smooth, and constant-speed, with no pauses or extra motion. "
-        "After reaching the back-facing position, the person stops completely "
-        "and remains perfectly still until the video ends. "
-        "STRICTLY FORBIDDEN: dancing, swaying, posing, hip movement, shoulder movement, "
-        "arm gestures, walking, stepping, bouncing, head turns, smiling changes, "
-        "360-degree rotation, turning back to the front, or any additional movement."
+"The fitness model slowly and smoothly rotates exactly 180 degrees in place, keeping the exact same pose, posture, muscle tension, and outfit throughout. No dancing, no flexing, no limb movement, no facial expression change. Stable body, minimal motion, clean and static background. Photorealistic, consistent anatomy."
+
     )
 
 
