@@ -56,6 +56,40 @@ DASHSCOPE_QWEN_IMAGE_EDIT_SIZE = os.getenv("DASHSCOPE_QWEN_IMAGE_EDIT_SIZE", "10
 # Видео Wan 2.2 image-to-video (полуоборот ~180°, async task)
 DASHSCOPE_WAN_I2V_MODEL = os.getenv("DASHSCOPE_WAN_I2V_MODEL", "wan2.2-i2v-plus").strip()
 DASHSCOPE_WAN_I2V_RESOLUTION = os.getenv("DASHSCOPE_WAN_I2V_RESOLUTION", "480P").strip()
+
+
+def _parse_wan_i2v_seed(raw: str, env_name: str) -> int | None:
+    v = (raw or "").strip()
+    if not v:
+        return None
+    try:
+        n = int(v)
+    except ValueError:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "%s=%r is not an integer — seed ignored", env_name, raw
+        )
+        return None
+    if not 0 <= n <= 2147483647:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "%s=%s out of range [0, 2147483647] — seed ignored", env_name, n
+        )
+        return None
+    return n
+
+
+# Фиксированный seed из веб-консоли (опционально). Пусто = случайный seed у API.
+DASHSCOPE_WAN_I2V_SEED = _parse_wan_i2v_seed(
+    os.getenv("DASHSCOPE_WAN_I2V_SEED", ""), "DASHSCOPE_WAN_I2V_SEED"
+)
+# Второе видео («после»); если пусто — используется DASHSCOPE_WAN_I2V_SEED (если задан).
+DASHSCOPE_WAN_I2V_SEED_AFTER = _parse_wan_i2v_seed(
+    os.getenv("DASHSCOPE_WAN_I2V_SEED_AFTER", ""), "DASHSCOPE_WAN_I2V_SEED_AFTER"
+)
+
 DASHSCOPE_WAN_I2V_PROMPT_EXTEND = os.getenv("DASHSCOPE_WAN_I2V_PROMPT_EXTEND", "false").strip().lower() in (
     "1",
     "true",

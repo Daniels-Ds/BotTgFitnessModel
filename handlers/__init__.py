@@ -94,7 +94,12 @@ from services.dashscope_qwen_image_edit_client import (
 from services.dashscope_wan_i2v_client import generate_wan_i2v_video
 from services.dashscope_text_client import ask_dashscope_text
 from services.gemini_service import generate_workout
-from config import DASHSCOPE_API_KEY, USE_WAN_FOR_VIDEO
+from config import (
+    DASHSCOPE_API_KEY,
+    DASHSCOPE_WAN_I2V_SEED,
+    DASHSCOPE_WAN_I2V_SEED_AFTER,
+    USE_WAN_FOR_VIDEO,
+)
 from states import Measurements, Onboarding, PostGen
 from utils import init_ui, remove_all_html
 router = Router()
@@ -144,12 +149,17 @@ def _hide_service_names(text: str) -> str:
 
 async def safe_generate_video(prompt: str, photo: bytes):
     async with veo_lock:
-        return await generate_wan_i2v_video(prompt, photo)
+        return await generate_wan_i2v_video(prompt, photo, seed=DASHSCOPE_WAN_I2V_SEED)
 
 
 async def safe_generate_video_after(prompt: str, photo: bytes):
     async with veo_lock:
-        return await generate_wan_i2v_video(prompt, photo)
+        after_seed = (
+            DASHSCOPE_WAN_I2V_SEED_AFTER
+            if DASHSCOPE_WAN_I2V_SEED_AFTER is not None
+            else DASHSCOPE_WAN_I2V_SEED
+        )
+        return await generate_wan_i2v_video(prompt, photo, seed=after_seed)
 
 
 async def _prepare_photo_after(photo: bytes, data: dict) -> bytes:

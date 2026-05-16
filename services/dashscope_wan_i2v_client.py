@@ -69,6 +69,7 @@ async def generate_wan_i2v_video(
     prompt: str,
     image_bytes: bytes,
     *,
+    seed: int | None = None,
     max_retries: int = 2,
 ) -> tuple[Optional[bytes], str]:
     """
@@ -81,21 +82,31 @@ async def generate_wan_i2v_video(
 
     img_url = _image_data_url_for_wan(image_bytes)
     logger.info(
-        "Wan i2v submit first_frame bytes=%s data_url_prefix=%s…",
+        "Wan i2v submit first_frame bytes=%s seed=%s data_url_prefix=%s…",
         len(image_bytes),
+        seed if seed is not None else "random",
         img_url[:32],
     )
+
+    parameters: dict[str, Any] = {
+        "resolution": DASHSCOPE_WAN_I2V_RESOLUTION,
+        "prompt_extend": DASHSCOPE_WAN_I2V_PROMPT_EXTEND,
+    }
+    if seed is not None:
+        parameters["seed"] = int(seed)
 
     body: dict[str, Any] = {
         "model": DASHSCOPE_WAN_I2V_MODEL,
         "input": {
             "prompt": prompt,
-            "img_url": img_url,
+            "media": [
+            {
+                "type": "first_frame",
+                "url": img_url,
+            }
+        ],
         },
-        "parameters": {
-            "resolution": DASHSCOPE_WAN_I2V_RESOLUTION,
-            "prompt_extend": DASHSCOPE_WAN_I2V_PROMPT_EXTEND,
-        },
+        "parameters": parameters,
     }
     if DASHSCOPE_WAN_I2V_NEGATIVE_PROMPT:
         body["input"]["negative_prompt"] = DASHSCOPE_WAN_I2V_NEGATIVE_PROMPT
