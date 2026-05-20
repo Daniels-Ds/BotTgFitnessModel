@@ -107,7 +107,7 @@ DASHSCOPE_VIDEO_POLL_INTERVAL_SEC = float(os.getenv("DASHSCOPE_VIDEO_POLL_INTERV
 DASHSCOPE_VIDEO_MAX_WAIT_SEC = int(os.getenv("DASHSCOPE_VIDEO_MAX_WAIT_SEC", "600"))
 
 # В промпты (WAN / OpenRouter image) уходят «смягчённые» проценты зон: иначе модели завышают эффект.
-# UI по-прежнему 10/20/30; здесь множитель и потолок для текста промптов.
+# UI: акценты зон 10 / 30 / 50%; здесь множитель и потолок для текста промптов (Wan / Qwen).
 MUSCLE_PROMPT_SCALE = float(os.getenv("MUSCLE_PROMPT_SCALE", "0.55"))
 MUSCLE_PROMPT_MAX_PCT = int(os.getenv("MUSCLE_PROMPT_MAX_PCT", "18"))
 

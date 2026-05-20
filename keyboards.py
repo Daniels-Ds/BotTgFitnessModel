@@ -40,11 +40,12 @@ MUSCLE_GROUPS: list[tuple[str, str, str]] = [
     ("thighs", "Бёдра", "🦵"),
     ("calves", "Икры", "🦶"),
     ("glutes", "Ягодицы", "🍑"),
-    ("biceps", "Бицепсы", "💪"),
+    ("biceps", "Бицепсы", "🦾"),
+    ("triceps", "Трицепсы", "🔻"),
     ("abs", "Пресс", "🔥"),
 ]
 
-PERCENTS = (10, 20, 30)
+PERCENTS = (10, 30, 50)
 
 
 def muscle_kb(selected: dict) -> InlineKeyboardMarkup:

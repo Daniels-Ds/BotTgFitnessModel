@@ -14,6 +14,7 @@ _MUSCLE_LABEL_EN: dict[str, str] = {
     "calves": "Calves",
     "glutes": "Glutes",
     "biceps": "Biceps",
+    "triceps": "Triceps",
     "abs": "Abs",
 }
 
@@ -111,6 +112,16 @@ STYLE: Photoreal natural fitness look. FORBIDDEN: competition bodybuilding look,
 # ─── Wan i2v — “after training” video ───────────────────────────────
 
 
+def _muscle_ui_tier(base: int) -> int:
+    """UI choice 10 / 30 / 50; legacy saved 20% maps to the middle tier."""
+    b = int(base)
+    if b <= 15:
+        return 10
+    if b <= 40:
+        return 30
+    return 50
+
+
 def _muscle_changes_text(muscles: dict) -> str:
     effective = _muscles_effective_pcts(muscles)
     lines: list[str] = []
@@ -121,12 +132,12 @@ def _muscle_changes_text(muscles: dict) -> str:
         eff = effective.get(key, int(pct))
         intensity = {
             10: "Very subtle tightening; lines slightly cleaner, close to reference; no bodybuilder bulk",
-            20: "Moderate natural definition without overall mass gain; no extreme bodybuilder separation",
-            30: "A bit more defined but still restrained; no doubled volume; no blown-up “gym meme” muscles",
+            30: "Moderate natural definition without overall mass gain; no extreme bodybuilder separation",
+            50: "Stronger visible emphasis but still restrained; no doubled volume, no competition-level bulk",
         }
         base = int(pct)
-        tier = 10 if base <= 12 else 20 if base <= 22 else 30
-        desc = intensity.get(tier, intensity[20])
+        tier = _muscle_ui_tier(base)
+        desc = intensity.get(tier, intensity[30])
         lines.append(
             f"- {label}: {desc}. Target emphasis ~+{eff}% (interpret as guidance only, not a literal scale multiplier)."
         )
@@ -138,7 +149,7 @@ def _muscle_changes_text(muscles: dict) -> str:
 
 
 def _after_body_zone_clause(key: str, pct: int, *, female: bool) -> str:
-    """One lowercase clause for the flowing sentence; pct is the user's UI choice (10/20/30)."""
+    """One lowercase clause for the flowing sentence; pct is the user's UI choice (10/30/50)."""
     p = int(pct)
     if key == "shoulders":
         return f"slightly wider shoulders for a balanced athletic silhouette (+{p}%)"
@@ -156,6 +167,8 @@ def _after_body_zone_clause(key: str, pct: int, *, female: bool) -> str:
         return f"firmer, fuller glutes with a compact athletic lift (+{p}%)"
     if key == "biceps":
         return f"clearer upper-arm tone without oversized muscle (+{p}%)"
+    if key == "triceps":
+        return f"clearer back-of-arm definition and tone without oversized mass (+{p}%)"
     if key == "abs":
         return f"a slimmer waist with light, natural abdominal definition (+{p}%)"
     return f"subtle refinement in the {_muscle_label_en(key)} area (+{p}%)"
