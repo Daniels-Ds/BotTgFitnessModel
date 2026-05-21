@@ -11,6 +11,9 @@ Telegram-бот для фитнес-сценариев: анкета, реком
    - `GOOGLE_AI_API_KEY`
    - `OPENROUTER_API_KEY`
    - `WAN_API_KEY` (если используется соответствующий flow)
+   - `GOOGLE_AI_API_KEY` — кадр «после» через Gemini Image ([Nano Banana](https://ai.google.dev/gemini-api/docs/image-generation), `gemini-2.5-flash-image` по умолчанию)
+   - `DASHSCOPE_API_KEY` — Wan i2v, оверлей замеров (Qwen), резерв кадра «после» без Google
+   - `KIE_API_KEY` — опционально, `AFTER_BODY_BACKEND=kie` ([Seedream 4.5 Edit](https://docs.kie.ai/market/seedream/4-5-edit))
 4. Установите зависимости:
    - `pip install -r requirements.txt`
 5. Запуск:

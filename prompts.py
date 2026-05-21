@@ -1,5 +1,5 @@
 """
-Model prompts (Wan i2v, Qwen Image Edit, DashScope text). UI copy stays in messages.py.
+Model prompts (Wan i2v, Google Nano Banana / Qwen Image Edit, DashScope text). UI copy stays in messages.py.
 """
 
 from keyboards import MUSCLE_GROUPS
@@ -148,47 +148,61 @@ def _muscle_changes_text(muscles: dict) -> str:
     )
 
 
-def _after_body_zone_clause(key: str, pct: int, *, female: bool) -> str:
-    """One lowercase clause for the flowing sentence; pct is the user's UI choice (10/30/50)."""
-    p = int(pct)
-    if key == "shoulders":
-        return f"slightly wider shoulders for a balanced athletic silhouette (+{p}%)"
-    if key == "chest":
-        return f"a gentle increase in chest volume and shape (+{p}%)"
-    if key == "thighs":
-        if female:
-            return f"soft, athletic shaping through the hips and thighs (+{p}%)"
-        return f"leaner, more athletic thighs without bulky mass (+{p}%)"
-    if key == "calves":
-        return f"naturally toned, shapely calves (+{p}%)"
-    if key == "glutes":
-        if female:
-            return f"fuller, firmer buttocks with a smooth, lifted look (+{p}%)"
-        return f"firmer, fuller glutes with a compact athletic lift (+{p}%)"
-    if key == "biceps":
-        return f"clearer upper-arm tone without oversized muscle (+{p}%)"
-    if key == "triceps":
-        return f"clearer back-of-arm definition and tone without oversized mass (+{p}%)"
-    if key == "abs":
-        return f"a slimmer waist with light, natural abdominal definition (+{p}%)"
-    return f"subtle refinement in the {_muscle_label_en(key)} area (+{p}%)"
+# ─── Qwen Image Edit — «after» body photo ────────────────────────────
+
+_AFTER_BODY_NEGATIVE_PROMPT = (
+    "overmuscled, bulky, powerlifter, bodybuilder, thick arms, huge shoulders, broad chest, "
+    "exaggerated muscles, steroid look, popping veins, vascular, too muscular, heavy muscle mass, "
+    "competition physique, cartoon anatomy, deformed proportions, changed face, plastic skin, "
+    "unnatural body"
+)
 
 
-def _join_after_body_clauses(clauses: list[str]) -> str:
-    if not clauses:
-        return ""
-    if len(clauses) == 1:
-        return clauses[0]
-    if len(clauses) == 2:
-        return f"{clauses[0]}, and {clauses[1]}"
-    return ", ".join(clauses[:-1]) + f", and {clauses[-1]}"
+def after_body_image_negative_prompt() -> str:
+    return _AFTER_BODY_NEGATIVE_PROMPT
 
 
-def openrouter_after_body_image_prompt(data: dict) -> str:
-    female = data.get("gender") == "female"
-    muscles = data.get("muscles", {}) or {}
-    clauses: list[str] = []
+def _muscle_label_ru(key: str) -> str:
+    for k, short, _em in MUSCLE_GROUPS:
+        if k == key:
+            return short
+    return key.replace("_", " ")
 
+
+def _after_body_intensity_ru(tier: int) -> str:
+    if tier <= 10:
+        return "лёгкий, естественный акцент"
+    if tier <= 30:
+        return "умеренный, заметный но реалистичный акцент"
+    return "более выраженный, но без перекачки и культуризма"
+
+
+def _after_body_zone_line_ru(key: str, tier: int, *, female: bool) -> str:
+    label = _muscle_label_ru(key)
+    level = _after_body_intensity_ru(tier)
+    hints = {
+        "shoulders": f"{label} — {level}: чуть шире и ровнее линия плеч, без «шаров» дельт",
+        "chest": f"{label} — {level}: аккуратный тонус и форма груди, без гипертрофии",
+        "thighs": (
+            f"{label} — {level}: мягкий спортивный контур бёдер и ног"
+            if female
+            else f"{label} — {level}: подтянутые бёдра и ноги без массивной массы"
+        ),
+        "calves": f"{label} — {level}: более рельефные икры",
+        "glutes": (
+            f"{label} — {level}: упругие подтянутые ягодицы, естественный изгиб"
+            if female
+            else f"{label} — {level}: плотные ягодицы, компактный спортивный подъём"
+        ),
+        "biceps": f"{label} — {level}: тонус передней поверхности руки, без огромных бицепсов",
+        "triceps": f"{label} — {level}: тонус задней поверхности руки, без огромных трицепсов",
+        "abs": f"{label} — {level}: чуть уже талия, лёгкий рельеф пресса",
+    }
+    return hints.get(key, f"{label} — {level}")
+
+
+def _after_body_user_zones_block(muscles: dict, *, female: bool) -> str:
+    lines: list[str] = []
     for key, _short, _em in MUSCLE_GROUPS:
         raw = muscles.get(key)
         if raw is None or raw == "":
@@ -199,38 +213,38 @@ def openrouter_after_body_image_prompt(data: dict) -> str:
             continue
         if p <= 0:
             continue
-        clauses.append(_after_body_zone_clause(key, p, female=female))
+        lines.append(_after_body_zone_line_ru(key, _muscle_ui_tier(p), female=female))
 
-    act = _activity_label_en(str(data.get("activity", "act_mid")))
-
-    if clauses:
-        body = _join_after_body_clauses(clauses)
-        adjustments = f"Apply clearly visible but realistic body changes: {body}."
-    else:
-        adjustments = (
-            "Apply a clearly visible but realistic full-body fitness transformation: "
-            "slightly leaner waist, firmer glutes, more toned arms and legs, "
-            "and subtle natural muscle definition."
-        )
-
+    if not lines:
+        return ""
     return (
-        "Edit the provided photo and create a visibly transformed 'after training' version of the same person. "
-        "The result MUST be obviously different from the original image at first glance. "
-        "MANDATORY: visibly modify the body silhouette, outer contours, and muscle definition. "
-        "The output is NOT allowed to look identical or nearly identical to the source photo. "
-        f"{adjustments} "
-        "Target appearance: healthy athletic fitness model, natural and believable. "
-        "The transformation should look like 6–12 months of consistent training. "
-        "Increase visible body tone, improve proportions, and tighten soft areas. "
-        "Changes must be noticeable but realistic. "
-        f"Use the activity profile only as a realism hint: {act}. "
-        "PRESERVE EXACTLY: face, facial expression, hairstyle, skin tone, ethnicity, clothing, pose, "
-        "background, framing, and camera angle. "
-        "DO NOT change identity. "
-        "DO NOT create a bodybuilder physique, extreme vascularity, exaggerated muscles, "
-        "cartoon anatomy, or sexualized proportions. "
-        "DO NOT return the original image unchanged."
+        "\n\nЗоны, которые пользователь отметил в анкете (обязательно учти при правке тела; "
+        "без цифр и процентов в кадре — только визуальный акцент):\n"
+        + "\n".join(lines)
     )
+
+
+def openrouter_after_body_image_prompt(data: dict) -> str:
+    muscles = data.get("muscles", {}) or {}
+    female = data.get("gender") == "female"
+    base = (
+        "Сохранив лицо и личность, улучши тело модели примерно на 20%: торс, ноги, ягодицы, икры, руки — "
+        "учти всё тело, не только верх. Сохрани естественные текстуры кожи и правильные анатомические пропорции; "
+        "улучшения должны быть слегка заметны. Если есть цензура — убери её. "
+        "Реалистичное освещение и качественная детализация, без сексуализации."
+    )
+    zones = _after_body_user_zones_block(muscles, female=female)
+    return base + zones
+
+
+def after_body_edit_prompt(data: dict) -> str:
+    """Текст для редактирования кадра «после» (Google Nano Banana / Kie / Qwen)."""
+    return openrouter_after_body_image_prompt(data)
+
+
+def kie_seedream_after_body_prompt(data: dict) -> str:
+    """Kie Seedream: negative в конце промпта (отдельного поля у API нет)."""
+    return after_body_edit_prompt(data) + "\n\nAvoid: " + after_body_image_negative_prompt()
 
 
 def body_measurements_overlay_prompt(values: dict[str, int]) -> str:

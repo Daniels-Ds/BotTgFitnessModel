@@ -111,8 +111,48 @@ DASHSCOPE_VIDEO_MAX_WAIT_SEC = int(os.getenv("DASHSCOPE_VIDEO_MAX_WAIT_SEC", "60
 MUSCLE_PROMPT_SCALE = float(os.getenv("MUSCLE_PROMPT_SCALE", "0.55"))
 MUSCLE_PROMPT_MAX_PCT = int(os.getenv("MUSCLE_PROMPT_MAX_PCT", "18"))
 
-# USE_WAN_FOR_VIDEO=0 — только превью: два фото (реф + Qwen «после»), без видео Wan i2v.
+# USE_WAN_FOR_VIDEO=0 — только превью: два фото (реф + «после»), без видео Wan i2v.
 USE_WAN_FOR_VIDEO = os.getenv("USE_WAN_FOR_VIDEO", "1").strip().lower() in ("1", "true", "yes")
+
+# Google Gemini Image (Nano Banana) — кадр «после»
+# gemini-2.5-flash-image | gemini-3.1-flash-image-preview | gemini-3-pro-image-preview
+GOOGLE_NANO_BANANA_MODEL = os.getenv("GOOGLE_NANO_BANANA_MODEL", "gemini-2.5-flash-image").strip()
+GOOGLE_NANO_BANANA_ASPECT_RATIO = os.getenv("GOOGLE_NANO_BANANA_ASPECT_RATIO", "9:16").strip()
+
+# Kie.ai — Seedream 4.5 Edit (опционально, AFTER_BODY_BACKEND=kie)
+KIE_API_KEY = os.getenv("KIE_API_KEY", "").strip()
+KIE_BASE_URL = os.getenv("KIE_BASE_URL", "https://api.kie.ai").rstrip("/")
+KIE_UPLOAD_BASE_URL = os.getenv("KIE_UPLOAD_BASE_URL", "https://kieai.redpandaai.co").rstrip("/")
+KIE_UPLOAD_PATH = os.getenv("KIE_UPLOAD_PATH", "images/user-uploads").strip()
+KIE_SEEDREAM_EDIT_MODEL = os.getenv("KIE_SEEDREAM_EDIT_MODEL", "seedream/4.5-edit").strip()
+KIE_SEEDREAM_ASPECT_RATIO = os.getenv("KIE_SEEDREAM_ASPECT_RATIO", "9:16").strip()
+KIE_SEEDREAM_QUALITY = os.getenv("KIE_SEEDREAM_QUALITY", "basic").strip()  # basic | high
+KIE_SEEDREAM_NSFW_CHECKER = os.getenv("KIE_SEEDREAM_NSFW_CHECKER", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+KIE_TASK_POLL_INTERVAL_SEC = float(os.getenv("KIE_TASK_POLL_INTERVAL_SEC", "3"))
+KIE_TASK_MAX_WAIT_SEC = int(os.getenv("KIE_TASK_MAX_WAIT_SEC", "600"))
+
+# auto = Google Nano Banana если GOOGLE_AI_API_KEY; kie = Seedream; qwen = DashScope Qwen
+_AFTER_BODY_BACKEND = os.getenv("AFTER_BODY_BACKEND", "auto").strip().lower()
+
+
+def use_google_for_after_body() -> bool:
+    if _AFTER_BODY_BACKEND in ("qwen", "dashscope", "kie", "seedream"):
+        return False
+    if _AFTER_BODY_BACKEND in ("google", "gemini", "nano", "nano-banana", "banana"):
+        return bool(GOOGLE_AI_API_KEY)
+    return bool(GOOGLE_AI_API_KEY)
+
+
+def use_kie_for_after_body() -> bool:
+    if _AFTER_BODY_BACKEND in ("qwen", "dashscope", "google", "gemini", "nano", "nano-banana", "banana"):
+        return False
+    if _AFTER_BODY_BACKEND in ("kie", "seedream"):
+        return bool(KIE_API_KEY)
+    return False
 
 # ⚡ ВАЖНО: быстрая модель Gemini
 GEMINI_MODEL = "gemini-2.5-flash"

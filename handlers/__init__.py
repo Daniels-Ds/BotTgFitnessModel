@@ -1,5 +1,5 @@
 """
-Хендлеры бота: онбординг, два видео Wan 2.2 i2v (DashScope); кадр «после» — Qwen Image Edit.
+Хендлеры бота: онбординг, два видео Wan 2.2 i2v (DashScope); кадр «после» — Google Nano Banana или Qwen/Kie.
 """
 
 from __future__ import annotations
@@ -79,9 +79,10 @@ from messages import (
     workout_today_train_html,
 )
 from prompts import (
+    after_body_edit_prompt,
     body_measurements_overlay_prompt,
+    kie_seedream_after_body_prompt,
     nutrition_prompt,
-    openrouter_after_body_image_prompt,
     veo_after_prompt,
     veo_current_prompt,
     water_hint_text,
@@ -91,6 +92,8 @@ from services.dashscope_qwen_image_edit_client import (
     edit_after_body_image_qwen,
     edit_measurements_overlay_qwen,
 )
+from services.google_nano_banana_client import edit_after_body_image_google
+from services.kie_seedream_edit_client import edit_after_body_image_seedream
 from services.dashscope_wan_i2v_client import generate_wan_i2v_video
 from services.dashscope_text_client import ask_dashscope_text
 from services.gemini_service import generate_workout
@@ -98,6 +101,8 @@ from config import (
     DASHSCOPE_API_KEY,
     DASHSCOPE_WAN_I2V_SEED,
     DASHSCOPE_WAN_I2V_SEED_AFTER,
+    use_google_for_after_body,
+    use_kie_for_after_body,
     USE_WAN_FOR_VIDEO,
 )
 from states import Measurements, Onboarding, PostGen
@@ -163,18 +168,33 @@ async def safe_generate_video_after(prompt: str, photo: bytes):
 
 
 async def _prepare_photo_after(photo: bytes, data: dict) -> bytes:
-    """Qwen Image Edit (референс + текст); при ошибке — исходный референс."""
-    logger.info("after-body: Qwen edit start input_bytes=%s", len(photo))
-    prompt = openrouter_after_body_image_prompt(data)
-    q_img = await edit_after_body_image_qwen(photo, prompt)
-    if q_img:
-        if q_img == photo:
+    """Google Nano Banana, Kie Seedream или Qwen; при ошибке — исходный референс."""
+    if use_google_for_after_body():
+        logger.info("after-body: Google Nano Banana edit start input_bytes=%s", len(photo))
+        prompt = after_body_edit_prompt(data)
+        out = await edit_after_body_image_google(photo, prompt)
+        backend = "google-nano-banana"
+    elif use_kie_for_after_body():
+        logger.info("after-body: Kie Seedream edit start input_bytes=%s", len(photo))
+        prompt = kie_seedream_after_body_prompt(data)
+        out = await edit_after_body_image_seedream(photo, prompt)
+        backend = "kie-seedream"
+    else:
+        logger.info("after-body: Qwen edit start input_bytes=%s", len(photo))
+        prompt = after_body_edit_prompt(data)
+        out = await edit_after_body_image_qwen(photo, prompt)
+        backend = "qwen"
+
+    if out:
+        if out == photo:
             logger.warning(
-                "after-body: Qwen returned same bytes as input — API accepted request but likely skipped real edit"
+                "after-body: %s returned same bytes as input — likely skipped real edit",
+                backend,
             )
-        return q_img
+        return out
     logger.warning(
-        "after-body: Qwen returned None (see Qwen image edit logs above) — using original photo for second slot"
+        "after-body: %s returned None — using original photo for second slot",
+        backend,
     )
     return photo
 

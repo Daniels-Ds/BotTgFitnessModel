@@ -19,6 +19,7 @@ from config import (
     DASHSCOPE_QWEN_IMAGE_EDIT_SIZE,
     HTTPS_PROXY,
 )
+from prompts import after_body_image_negative_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ async def _qwen_image_edit(
     model: str,
     max_retries: int = 2,
     prompt_extend: bool = True,
+    negative_prompt: str | None = None,
 ) -> Optional[bytes]:
     if not DASHSCOPE_API_KEY:
         logger.error("DASHSCOPE_API_KEY / ALIBABA_MODEL_STUDIO_API_KEY is not set")
@@ -92,7 +94,7 @@ async def _qwen_image_edit(
         },
         "parameters": {
             "n": 1,
-            "negative_prompt": " ",
+            "negative_prompt": (negative_prompt or " ").strip() or " ",
             "watermark": False,
             "prompt_extend": prompt_extend,
         },
@@ -192,6 +194,7 @@ async def edit_after_body_image_qwen(
         model=DASHSCOPE_QWEN_IMAGE_EDIT_AFTER_MODEL,
         max_retries=max_retries,
         prompt_extend=pe,
+        negative_prompt=after_body_image_negative_prompt(),
     )
 
 
