@@ -171,37 +171,37 @@ def _muscle_label_ru(key: str) -> str:
 
 def _after_body_intensity_ru(tier: int) -> str:
     if tier <= 10:
-        return "лёгкий, естественный акцент"
+        return "лёгкий акцент"
     if tier <= 30:
-        return "умеренный, заметный но реалистичный акцент"
-    return "более выраженный, но без перекачки и культуризма"
+        return "умеренный акцент"
+    return "заметный, но реалистичный акцент"
 
 
 def _after_body_zone_line_ru(key: str, tier: int, *, female: bool) -> str:
     label = _muscle_label_ru(key)
     level = _after_body_intensity_ru(tier)
     hints = {
-        "shoulders": f"{label} — {level}: чуть шире и ровнее линия плеч, без «шаров» дельт",
-        "chest": f"{label} — {level}: аккуратный тонус и форма груди, без гипертрофии",
+        "shoulders": f"{label} — {level}: чуть ровнее линия плеч, лёгкий тонус, без массивных дельт",
+        "chest": f"{label} — {level}: аккуратный тонус, без увеличения объёма «накачанной» груди",
         "thighs": (
-            f"{label} — {level}: мягкий спортивный контур бёдер и ног"
+            f"{label} — {level}: подтянутый спортивный контур, без лишней массы"
             if female
-            else f"{label} — {level}: подтянутые бёдра и ноги без массивной массы"
+            else f"{label} — {level}: подтянутые бёдра и ноги, без массивной массы"
         ),
-        "calves": f"{label} — {level}: более рельефные икры",
+        "calves": f"{label} — {level}: чуть более рельефные икры",
         "glutes": (
-            f"{label} — {level}: упругие подтянутые ягодицы, естественный изгиб"
+            f"{label} — {level}: упругость и подъём, естественная форма"
             if female
-            else f"{label} — {level}: плотные ягодицы, компактный спортивный подъём"
+            else f"{label} — {level}: плотность и компактный спортивный подъём"
         ),
-        "biceps": f"{label} — {level}: тонус передней поверхности руки, без огромных бицепсов",
-        "triceps": f"{label} — {level}: тонус задней поверхности руки, без огромных трицепсов",
-        "abs": f"{label} — {level}: чуть уже талия, лёгкий рельеф пресса",
+        "biceps": f"{label} — {level}: тонус передней части руки, без больших бицепсов",
+        "triceps": f"{label} — {level}: тонус задней части руки, без огромных рук",
+        "abs": f"{label} — {level}: чуть уже талия, мягкий рельеф, без «кубиков» пресса",
     }
     return hints.get(key, f"{label} — {level}")
 
 
-def _after_body_user_zones_block(muscles: dict, *, female: bool) -> str:
+def _after_body_selected_zone_lines(muscles: dict, *, female: bool) -> list[str]:
     lines: list[str] = []
     for key, _short, _em in MUSCLE_GROUPS:
         raw = muscles.get(key)
@@ -214,27 +214,43 @@ def _after_body_user_zones_block(muscles: dict, *, female: bool) -> str:
         if p <= 0:
             continue
         lines.append(_after_body_zone_line_ru(key, _muscle_ui_tier(p), female=female))
+    return lines
 
-    if not lines:
-        return ""
-    return (
-        "\n\nЗоны, которые пользователь отметил в анкете (обязательно учти при правке тела; "
-        "без цифр и процентов в кадре — только визуальный акцент):\n"
-        + "\n".join(lines)
-    )
+
+_AFTER_BODY_PRESERVE = (
+    "Отредактируй это фото: тот же человек, то же лицо, та же мимика, причёска, тон кожи, "
+    "этничность, одежда, поза, фон, ракурс и освещение. Личность и лицо не менять."
+)
+
+_AFTER_BODY_FOOTER = (
+    "Общий тон правки: здоровое, подтянутое, естественное телосложение фитнес-модели; "
+    "улучшения видны, но правдоподобны. Сохрани текстуры кожи и пропорции. "
+    "Реалистичный свет и детализация. Без сексуализации. "
+    "Если на исходнике есть цензура — убери её, не меняя идентичность."
+)
 
 
 def openrouter_after_body_image_prompt(data: dict) -> str:
     muscles = data.get("muscles", {}) or {}
     female = data.get("gender") == "female"
-    base = (
-        "Сохранив лицо и личность, улучши тело модели примерно на 20%: торс, ноги, ягодицы, икры, руки — "
-        "учти всё тело, не только верх. Сохрани естественные текстуры кожи и правильные анатомические пропорции; "
-        "улучшения должны быть слегка заметны. Если есть цензура — убери её. "
-        "Реалистичное освещение и качественная детализация, без сексуализации."
-    )
-    zones = _after_body_user_zones_block(muscles, female=female)
-    return base + zones
+    zone_lines = _after_body_selected_zone_lines(muscles, female=female)
+
+    if zone_lines:
+        body = (
+            "Сделай реалистичное спортивное улучшение тела только в зонах, которые пользователь отметил ниже. "
+            "Не трогай остальные части тела сверх необходимого для естественного перехода между зонами. "
+            "Без культуризма, без перекачки, без вен, без мультяшной анатомии.\n\n"
+            "Зоны и сила акцента:\n"
+            + "\n".join(zone_lines)
+        )
+    else:
+        body = (
+            "Сделай мягкое равномерное спортивное улучшение всего тела: лёгкий тонус, чуть суше и подтянутее силуэт "
+            "по всей фигуре (торс, руки, ноги, ягодицы, икры), без перекачки и без культуристического вида. "
+            "Улучшения слегка заметны, но естественны."
+        )
+
+    return f"{_AFTER_BODY_PRESERVE}\n\n{body}\n\n{_AFTER_BODY_FOOTER}"
 
 
 def after_body_edit_prompt(data: dict) -> str:
