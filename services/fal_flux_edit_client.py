@@ -1,0 +1,144 @@
+"""
+fal.ai — кадр «после» (FAL_FLUX_MODEL).
+По умолчанию Hunyuan Image 3 Instruct Edit:
+https://fal.ai/models/fal-ai/hunyuan-image/v3/instruct/edit
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any, Optional
+
+from config import (
+    FAL_FLUX_ASPECT_RATIO,
+    FAL_FLUX_ENABLE_PROMPT_EXPANSION,
+    FAL_FLUX_ENABLE_SAFETY_CHECKER,
+    FAL_FLUX_GUIDANCE_SCALE,
+    FAL_FLUX_MODEL,
+    FAL_FLUX_OUTPUT_FORMAT,
+    FAL_FLUX_SAFETY_TOLERANCE,
+    FAL_FLUX_SEED,
+)
+from services.fal_common import (
+    bytes_to_data_uri,
+    download_fal_media,
+    extract_image_url,
+    run_fal_queue_job,
+)
+
+logger = logging.getLogger(__name__)
+
+_PROMPT_MAX = 5000
+
+# image_size enum — Seedream, Hunyuan и др.
+_ASPECT_TO_IMAGE_SIZE: dict[str, str] = {
+    "9:16": "portrait_16_9",
+    "16:9": "landscape_16_9",
+    "4:3": "landscape_4_3",
+    "3:4": "portrait_4_3",
+    "1:1": "square",
+}
+
+
+def _is_flux_model(model_id: str) -> bool:
+    low = model_id.lower()
+    return "flux" in low and "seedream" not in low and "hunyuan" not in low
+
+
+def _is_hunyuan_model(model_id: str) -> bool:
+    return "hunyuan" in model_id.lower()
+
+
+def _is_seedream_model(model_id: str) -> bool:
+    return "seedream" in model_id.lower()
+
+
+def _uses_fal_image_size(model_id: str) -> bool:
+    return _is_hunyuan_model(model_id) or _is_seedream_model(model_id)
+
+
+def _fal_image_size(aspect_ratio: str) -> str:
+    return _ASPECT_TO_IMAGE_SIZE.get(aspect_ratio.strip(), "portrait_16_9")
+
+
+def _after_edit_log_label(model_id: str) -> str:
+    if _is_hunyuan_model(model_id):
+        return "hunyuan"
+    if _is_seedream_model(model_id):
+        return "seedream"
+    return "flux-2"
+
+
+def _build_after_edit_payload(prompt: str, image_bytes: bytes) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "prompt": (prompt or "")[:_PROMPT_MAX],
+        "image_urls": [bytes_to_data_uri(image_bytes)],
+    }
+    if FAL_FLUX_SEED is not None:
+        payload["seed"] = FAL_FLUX_SEED
+
+    if _is_hunyuan_model(FAL_FLUX_MODEL):
+        payload.update(
+            {
+                "image_size": _fal_image_size(FAL_FLUX_ASPECT_RATIO),
+                "num_images": 1,
+                "guidance_scale": FAL_FLUX_GUIDANCE_SCALE,
+                "enable_prompt_expansion": FAL_FLUX_ENABLE_PROMPT_EXPANSION,
+                "enable_safety_checker": FAL_FLUX_ENABLE_SAFETY_CHECKER,
+                "output_format": FAL_FLUX_OUTPUT_FORMAT,
+            }
+        )
+        return payload
+
+    if _is_seedream_model(FAL_FLUX_MODEL):
+        payload.update(
+            {
+                "image_size": _fal_image_size(FAL_FLUX_ASPECT_RATIO),
+                "enable_safety_checker": FAL_FLUX_ENABLE_SAFETY_CHECKER,
+                "num_images": 1,
+                "max_images": 1,
+            }
+        )
+        return payload
+
+    if _uses_fal_image_size(FAL_FLUX_MODEL):
+        payload["image_size"] = _fal_image_size(FAL_FLUX_ASPECT_RATIO)
+        payload["enable_safety_checker"] = FAL_FLUX_ENABLE_SAFETY_CHECKER
+        payload["num_images"] = 1
+        return payload
+
+    payload.update(
+        {
+            "aspect_ratio": FAL_FLUX_ASPECT_RATIO,
+            "output_format": FAL_FLUX_OUTPUT_FORMAT,
+            "enable_safety_checker": FAL_FLUX_ENABLE_SAFETY_CHECKER,
+            "safety_tolerance": FAL_FLUX_SAFETY_TOLERANCE,
+        }
+    )
+    return payload
+
+
+async def edit_after_body_image_flux(
+    image_bytes: bytes,
+    prompt: str,
+    *,
+    max_retries: int = 2,
+) -> Optional[bytes]:
+    input_payload = _build_after_edit_payload(prompt, image_bytes)
+    log_label = _after_edit_log_label(FAL_FLUX_MODEL)
+    if FAL_FLUX_SEED is not None:
+        logger.info("%s after-edit: seed=%s", log_label, FAL_FLUX_SEED)
+
+    result, reason = await run_fal_queue_job(
+        model_id=FAL_FLUX_MODEL,
+        input_payload=input_payload,
+        log_label=log_label,
+        max_retries=max_retries,
+    )
+    if reason == "safety" or not result:
+        return None
+
+    url = extract_image_url(result)
+    if not url:
+        return None
+
+    return await download_fal_media(url, log_label=log_label)

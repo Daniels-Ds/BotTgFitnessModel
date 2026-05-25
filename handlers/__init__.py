@@ -1,11 +1,12 @@
 """
-Хендлеры бота: онбординг, два видео Wan 2.2 i2v (DashScope); кадр «после» — Google Nano Banana или Qwen/Kie.
+Хендлеры бота: онбординг, кадры «после» (fal Hunyuan), два видео (fal Hailuo).
 """
 
 from __future__ import annotations
 
 import asyncio
 from datetime import date, datetime
+import hashlib
 import logging
 import re
 import time
@@ -14,20 +15,20 @@ from aiogram import Dispatcher, F, Router
 from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
-from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, InputMediaPhoto, InputMediaVideo, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, InputMediaVideo, Message
 
 from core.callbacks import CB
 from core.tasks import task_manager
 from db import (
-    clear_workout_plan,
+    delete_workout_day,
     get_latest_body_measurement,
-    get_workout_ready_weeks,
-    get_workout_week_body,
+    get_workout_day_body,
     save_body_measurement,
-    save_workout_week_body,
+    save_workout_day_body,
 )
 from keyboards import (
     activity_kb,
+    cycle_kb,
     edit_menu_kb,
     gender_kb,
     muscle_kb,
@@ -35,10 +36,11 @@ from keyboards import (
     video_fallback_kb,
     water_footer_kb,
     welcome_kb,
-    workout_plan_kb,
+    workout_today_kb,
 )
 from messages import (
     ASK_ACTIVITY,
+    ASK_CYCLE,
     ASK_AGE,
     ASK_GENDER,
     ASK_HEIGHT,
@@ -60,51 +62,33 @@ from messages import (
     PHOTO_1_OK,
     PHOTO_2_OK,
     PHOTO_3_OK,
-    PHOTO_PREVIEW_READY,
     POST_GEN_MENU,
     VIDEOS_READY,
     WELCOME,
     MEASUREMENTS_START,
-    WORKOUT_PLAN_CLEARED,
-    WORKOUT_PLAN_EMPTY,
-    WORKOUT_TODAY_REST,
-    WORKOUT_WEEK_FAIL,
-    WORKOUT_WEEK_LOCKED,
+    WORKOUT_FAIL,
     ask_muscles,
     profile_summary,
     progress_msg,
-    progress_msg_photo_preview,
-    workout_generating_week_html,
-    workout_plan_hub_html,
-    workout_today_train_html,
+    workout_generating_html,
+    workout_today_header_html,
 )
 from prompts import (
     after_body_edit_prompt,
     body_measurements_overlay_prompt,
-    kie_seedream_after_body_prompt,
     nutrition_prompt,
-    veo_after_prompt,
-    veo_current_prompt,
+    hailuo_after_turn_prompt,
+    hailuo_before_turn_prompt,
     water_hint_text,
-    workout_prompt_week,
+    workout_prompt_today,
 )
-from services.dashscope_qwen_image_edit_client import (
-    edit_after_body_image_qwen,
-    edit_measurements_overlay_qwen,
-)
-from services.google_nano_banana_client import edit_after_body_image_google
-from services.kie_seedream_edit_client import edit_after_body_image_seedream
-from services.dashscope_wan_i2v_client import generate_wan_i2v_video
+from services.photo_order import VIEWS_ORDER, order_photos_front_side_back
+from services.dashscope_qwen_image_edit_client import edit_measurements_overlay_qwen
+from services.fal_flux_edit_client import edit_after_body_image_flux
+from services.fal_hailuo_video_client import generate_hailuo_fal_video
 from services.dashscope_text_client import ask_dashscope_text
 from services.gemini_service import generate_workout
-from config import (
-    DASHSCOPE_API_KEY,
-    DASHSCOPE_WAN_I2V_SEED,
-    DASHSCOPE_WAN_I2V_SEED_AFTER,
-    use_google_for_after_body,
-    use_kie_for_after_body,
-    USE_WAN_FOR_VIDEO,
-)
+from config import DASHSCOPE_API_KEY, FAL_KEY, pipeline_after_views
 from states import Measurements, Onboarding, PostGen
 from utils import init_ui, remove_all_html
 router = Router()
@@ -134,75 +118,152 @@ async def safe_answer(cb: CallbackQuery, text: str | None = None, alert: bool = 
 
 
 def _hide_service_names(text: str) -> str:
-    cleaned = text or ""
+    """Убрать из текста ошибок названия провайдеров и env-переменных."""
+    cleaned = (text or "").strip()
     for token in (
         "RunningHub",
         "runninghub",
-        "OpenRouter",
-        "openrouter",
         "DashScope",
         "dashscope",
+        "DASHSCOPE_API_KEY",
+        "DASHSCOPE",
+        "ALIBABA_MODEL_STUDIO_API_KEY",
+        "ALIBABA_MODEL_STUDIO",
         "Model Studio",
+        "MODEL_STUDIO",
         "Alibaba",
         "Gemini",
-        "VEO",
-        "WAN",
+        "google.genai",
+        "google",
+        "fal.ai",
+        "fal_client",
+        "fal",
+        "FAL_KEY",
+        "FAL_",
+        "Kie",
+        "kie",
+        "Qwen",
+        "qwen",
+        "Seedream",
+        "seedream",
+        "Hunyuan",
+        "hunyuan",
+        "Hailuo",
+        "hailuo",
+        "Minimax",
+        "Flux",
+        "flux",
+        "ByteDance",
+        "OpenRouter",
+        "Vertex",
+        "aliyuncs",
+        "minimax",
+        ".env",
     ):
-        cleaned = cleaned.replace(token, "сервис")
-    return cleaned
+        cleaned = cleaned.replace(token, "")
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,;—-")
+    return cleaned or "временная ошибка"
 
 
-async def safe_generate_video(prompt: str, photo: bytes):
-    async with veo_lock:
-        return await generate_wan_i2v_video(prompt, photo, seed=DASHSCOPE_WAN_I2V_SEED)
-
-
-async def safe_generate_video_after(prompt: str, photo: bytes):
-    async with veo_lock:
-        after_seed = (
-            DASHSCOPE_WAN_I2V_SEED_AFTER
-            if DASHSCOPE_WAN_I2V_SEED_AFTER is not None
-            else DASHSCOPE_WAN_I2V_SEED
+def _user_error_appendix(reason: str) -> str:
+    """Строка «Причина: …» для пользователя; без технических деталей конфига."""
+    if not reason:
+        return ""
+    low = reason.lower()
+    if any(
+        x in low
+        for x in (
+            "api_key",
+            "не задан",
+            "not set",
+            ".env",
+            "fal_key",
+            "dashscope",
+            "model_studio",
+            "временно недоступна",
         )
-        return await generate_wan_i2v_video(prompt, photo, seed=after_seed)
+    ):
+        return ""
+    detail = _hide_service_names(reason)
+    if detail == "временная ошибка" and len((reason or "").strip()) < 3:
+        return ""
+    return f"\nПричина: {detail}"
 
 
-async def _prepare_photo_after(photo: bytes, data: dict) -> bytes:
-    """Google Nano Banana, Kie Seedream или Qwen; при ошибке — исходный референс."""
-    if use_google_for_after_body():
-        logger.info("after-body: Google Nano Banana edit start input_bytes=%s", len(photo))
-        prompt = after_body_edit_prompt(data)
-        out = await edit_after_body_image_google(photo, prompt)
-        backend = "google-nano-banana"
-    elif use_kie_for_after_body():
-        logger.info("after-body: Kie Seedream edit start input_bytes=%s", len(photo))
-        prompt = kie_seedream_after_body_prompt(data)
-        out = await edit_after_body_image_seedream(photo, prompt)
-        backend = "kie-seedream"
-    else:
-        logger.info("after-body: Qwen edit start input_bytes=%s", len(photo))
-        prompt = after_body_edit_prompt(data)
-        out = await edit_after_body_image_qwen(photo, prompt)
-        backend = "qwen"
-
+async def _prepare_photo_after_one(photo: bytes, data: dict, view: str) -> bytes:
+    """«После» — fal Seedream/Flux edit; при ошибке — исходный кадр."""
+    prompt = after_body_edit_prompt(data, view=view)
+    out = await edit_after_body_image_flux(photo, prompt)
     if out:
         if out == photo:
-            logger.warning(
-                "after-body: %s returned same bytes as input — likely skipped real edit",
-                backend,
-            )
+            logger.warning("after-body %s fal-flux: same bytes as input", view)
         return out
-    logger.warning(
-        "after-body: %s returned None — using original photo for second slot",
-        backend,
-    )
+    logger.warning("after-body %s fal-flux: None — using original", view)
     return photo
 
 
-async def retry_veo(fn, *args, retries: int = 3):
+def _photo_by_view(photos_ordered: list[bytes], view: str) -> bytes:
+    idx = VIEWS_ORDER.index(view)  # type: ignore[arg-type]
+    return photos_ordered[idx]
+
+
+async def _prepare_photos_after(photos_ordered: list[bytes], data: dict) -> list[bytes]:
+    """«После»: Hunyuan edit для ракурсов из PIPELINE_AFTER_VIEWS (по умолчанию front + back)."""
+    views = pipeline_after_views()
+    out = [bytes(p) for p in photos_ordered]
+    logger.info("after-body: editing views=%s", ",".join(views))
+
+    async def _one(view: str) -> tuple[str, bytes]:
+        raw = _photo_by_view(photos_ordered, view)
+        logger.info("after-body: preparing view=%s bytes=%s", view, len(raw))
+        edited = await _prepare_photo_after_one(raw, data, view)
+        return view, edited
+
+    if views:
+        results = await asyncio.gather(*[_one(v) for v in views])
+        for view, edited in results:
+            out[VIEWS_ORDER.index(view)] = edited  # type: ignore[arg-type]
+    return out
+
+
+def _hailuo_turn_frames(
+    photos: list[bytes],
+) -> tuple[bytes, bytes | None]:
+    """Старт = анфас; финиш = спина, если back в PIPELINE_AFTER_VIEWS."""
+    start = _photo_by_view(photos, "front")
+    views = pipeline_after_views()
+    end = _photo_by_view(photos, "back") if "back" in views else None
+    return start, end
+
+
+def _log_before_after_sets(before: list[bytes], after: list[bytes]) -> None:
+    for view, b, a in zip(VIEWS_ORDER, before, after):
+        hb = hashlib.sha256(b).hexdigest()[:12]
+        ha = hashlib.sha256(a).hexdigest()[:12]
+        logger.info(
+            "before/after view=%s before_sha=%s bytes=%s after_sha=%s bytes=%s identical=%s",
+            view,
+            hb,
+            len(b),
+            ha,
+            len(a),
+            hb == ha,
+        )
+
+
+async def safe_generate_hailuo_video(
+    prompt: str,
+    start_frame: bytes,
+    end_frame: bytes | None = None,
+):
+    async with veo_lock:
+        return await generate_hailuo_fal_video(prompt, start_frame, end_frame)
+
+
+async def retry_veo(fn, *args, retries: int = 3, **kwargs):
     for i in range(retries):
         try:
-            return await fn(*args)
+            return await fn(*args, **kwargs)
         except Exception as e:
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                 await asyncio.sleep(2**i)
@@ -399,6 +460,34 @@ async def on_weight(message: Message, state: FSMContext) -> None:
 @router.callback_query(StateFilter(Onboarding.activity), F.data.in_({CB.ACT_LOW, CB.ACT_MID, CB.ACT_HIGH}))
 async def on_activity(cb: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(activity=cb.data)
+    await safe_answer(cb)
+    data = await state.get_data()
+    if data.get("gender") == "female":
+        await state.set_state(Onboarding.cycle)
+        await cb.message.answer(ASK_CYCLE, parse_mode="HTML", reply_markup=cycle_kb())
+        return
+    await state.set_state(Onboarding.muscles)
+    await cb.message.answer(
+        ask_muscles(),
+        parse_mode="HTML",
+        reply_markup=muscle_kb(data.get("muscles") or {}),
+    )
+
+
+@router.callback_query(
+    StateFilter(Onboarding.cycle),
+    F.data.in_(
+        {
+            CB.CYCLE_MENSTRUATION,
+            CB.CYCLE_FOLLICULAR,
+            CB.CYCLE_OVULATION,
+            CB.CYCLE_LUTEAL,
+            CB.CYCLE_UNKNOWN,
+        }
+    ),
+)
+async def on_cycle(cb: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(cycle_phase=cb.data)
     await state.set_state(Onboarding.muscles)
     await safe_answer(cb)
     data = await state.get_data()
@@ -457,10 +546,18 @@ async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
     await safe_answer(cb)
     _active_tasks[user_id] = "video"
 
-    photo = photos[0]
+    if not (FAL_KEY or "").strip():
+        await cb.message.answer(
+            "⚠️ Генерация видео сейчас недоступна. Попробуйте позже.\n\n"
+            "Программу тренировок и питание можно запросить ниже:",
+            reply_markup=video_fallback_kb(),
+        )
+        _active_tasks.pop(user_id, None)
+        await state.set_state(PostGen.menu)
+        return
+
     summary = profile_summary(data)
-    progress_fn = progress_msg if USE_WAN_FOR_VIDEO else progress_msg_photo_preview
-    status = await cb.message.answer(summary + "\n\n" + progress_fn(0), parse_mode="HTML")
+    status = await cb.message.answer(summary + "\n\n" + progress_msg(0), parse_mode="HTML")
     start = time.monotonic()
 
     async def progress():
@@ -468,26 +565,43 @@ async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
             await asyncio.sleep(10)
             try:
                 elapsed = int(time.monotonic() - start)
-                await status.edit_text(summary + "\n\n" + progress_fn(elapsed), parse_mode="HTML")
+                await status.edit_text(summary + "\n\n" + progress_msg(elapsed), parse_mode="HTML")
             except Exception:
                 pass
 
     prog = asyncio.create_task(progress())
     video_current = video_after = None
     reason_current = reason_after = "unknown"
-    photo_after: bytes | None = None
+    photos_after: list[bytes] | None = None
     generation_ok = False
     try:
-        if USE_WAN_FOR_VIDEO:
-            video_current, reason_current = await retry_veo(safe_generate_video, veo_current_prompt(data), photo)
-            photo_after = await _prepare_photo_after(photo, data)
-            video_after, reason_after = await retry_veo(
-                safe_generate_video_after, veo_after_prompt(data), photo_after
-            )
-            generation_ok = bool(video_current and video_after)
-        else:
-            photo_after = await _prepare_photo_after(photo, data)
-            generation_ok = True
+        photos_ordered = await order_photos_front_side_back(list(photos))
+        photos_before = [bytes(p) for p in photos_ordered]
+        await state.update_data(photos_ordered=photos_before)
+
+        views = pipeline_after_views()
+        before_start, before_end = _hailuo_turn_frames(photos_before)
+        logger.info(
+            "video pipeline: after-edit views=%s; Hailuo start=front end=%s",
+            ",".join(views),
+            "back" if before_end else "none",
+        )
+        video_current, reason_current = await retry_veo(
+            safe_generate_hailuo_video,
+            hailuo_before_turn_prompt(dual_frame=before_end is not None),
+            before_start,
+            before_end,
+        )
+        photos_after = await _prepare_photos_after(photos_before, data)
+        _log_before_after_sets(photos_before, photos_after)
+        after_start, after_end = _hailuo_turn_frames(photos_after)
+        video_after, reason_after = await retry_veo(
+            safe_generate_hailuo_video,
+            hailuo_after_turn_prompt(dual_frame=after_end is not None),
+            after_start,
+            after_end,
+        )
+        generation_ok = bool(video_current and video_after)
     except Exception as e:
         logger.error("Video generation: %s", e, exc_info=True)
         video_current = video_after = None
@@ -502,24 +616,17 @@ async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
             pass
 
     if not generation_ok:
-        if USE_WAN_FOR_VIDEO:
-            if reason_current == "safety" or reason_after == "safety":
-                fail_text = (
-                    "⚠️ Генерация видео отклонена фильтрами безопасности контента.\n"
-                    "Попробуйте более нейтральное фото (без откровенного контента) "
-                    "или начните заново через /start.\n"
-                    "Программу тренировок и питание можно запросить ниже:"
-                )
-            else:
-                fail_text = (
-                    "⚠️ Не удалось получить видео. Попробуйте позже или /start.\n"
-                    "Программу тренировок и питание всё равно можно запросить ниже:"
-                )
+        if reason_current == "safety" or reason_after == "safety":
+            fail_text = (
+                "⚠️ Генерация видео отклонена фильтрами безопасности контента.\n"
+                "Попробуйте более нейтральное фото (без откровенного контента) "
+                "или начните заново через /start.\n"
+                "Программу тренировок и питание можно запросить ниже:"
+            )
         else:
             fail_text = (
-                "⚠️ Не удалось подготовить превью.\n"
-                "Попробуйте позже или /start.\n"
-                "Программу тренировок и питание можно запросить ниже:"
+                "⚠️ Не удалось получить видео. Попробуйте позже или /start.\n"
+                "Программу тренировок и питание всё равно можно запросить ниже:"
             )
         await cb.message.answer(
             fail_text,
@@ -528,34 +635,19 @@ async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
         await state.set_state(PostGen.menu)
         return
 
-    if USE_WAN_FOR_VIDEO:
-        media = [
-            InputMediaVideo(
-                media=BufferedInputFile(video_current, "seychas.mp4"),
-                caption="◀ Сейчас (по вашим фото)",
-            ),
-            InputMediaVideo(
-                media=BufferedInputFile(video_after, "posle.mp4"),
-                caption="После ▶ (с учётом выбранных зон)",
-            ),
-        ]
-        ready_text = VIDEOS_READY
-    else:
-        assert photo_after is not None
-        media = [
-            InputMediaPhoto(
-                media=BufferedInputFile(photo, "ref.jpg"),
-                caption="◀ Сейчас (референс, фото 1/3)",
-            ),
-            InputMediaPhoto(
-                media=BufferedInputFile(photo_after, "posle.jpg"),
-                caption="После ▶ (превью по зонам)",
-            ),
-        ]
-        ready_text = PHOTO_PREVIEW_READY
+    media = [
+        InputMediaVideo(
+            media=BufferedInputFile(video_current, "seychas.mp4"),
+            caption="◀ Сейчас · поворот анфас → спина",
+        ),
+        InputMediaVideo(
+            media=BufferedInputFile(video_after, "posle.mp4"),
+            caption="После ▶ · поворот анфас → спина, зоны из анкеты",
+        ),
+    ]
 
     await cb.message.answer_media_group(media)
-    await cb.message.answer(ready_text, parse_mode="HTML", reply_markup=post_gen_kb())
+    await cb.message.answer(VIDEOS_READY, parse_mode="HTML", reply_markup=post_gen_kb())
     await state.set_state(PostGen.menu)
 
 
@@ -570,143 +662,116 @@ async def retry_video(cb: CallbackQuery, state: FSMContext) -> None:
     await _run_video_generation(cb, state)
 
 
-# ─── Тренировки (календарь по неделям) ───────────────────────────────
+# ─── Тренировка на сегодня ───────────────────────────────────────────
+
+_WEEKDAY_RU = (
+    "понедельник",
+    "вторник",
+    "среда",
+    "четверг",
+    "пятница",
+    "суббота",
+    "воскресенье",
+)
 
 
-async def _send_workout_chunks(message: Message, text: str, *, header: str = "") -> None:
+async def _send_workout_chunks(message: Message, text: str, *, header_html: str = "") -> None:
+    if header_html:
+        await message.answer(header_html, parse_mode="HTML")
     body = remove_all_html(text)
-    if header:
-        body = header.rstrip() + "\n\n" + body
     for i in range(0, len(body), 4000):
         await message.answer(body[i : i + 4000])
 
 
-@router.callback_query(F.data == CB.WORKOUT)
-async def cb_workout_open_hub(cb: CallbackQuery, state: FSMContext) -> None:
-    await cb.answer()
-    uid = cb.from_user.id if cb.from_user else 0
-    ready = await get_workout_ready_weeks(uid)
-    await cb.message.answer(
-        workout_plan_hub_html(ready),
-        parse_mode="HTML",
-        reply_markup=workout_plan_kb(ready),
-    )
+async def _deliver_workout_today(
+    message: Message,
+    state: FSMContext,
+    user_id: int,
+    *,
+    force_refresh: bool = False,
+) -> None:
+    today = date.today()
+    day_key = today.isoformat()
+    weekday_ru = _WEEKDAY_RU[today.weekday()]
+    day_label = today.strftime("%d.%m.%Y")
 
+    if not force_refresh:
+        cached = await get_workout_day_body(user_id, day_key)
+        if cached:
+            await _send_workout_chunks(
+                message,
+                cached,
+                header_html=workout_today_header_html(
+                    weekday_ru, day_label, from_cache=True
+                ),
+            )
+            await message.answer(
+                POST_GEN_MENU,
+                parse_mode="HTML",
+                reply_markup=workout_today_kb(show_refresh=True),
+            )
+            return
 
-@router.callback_query(F.data.in_({CB.PLAN_W1, CB.PLAN_W2, CB.PLAN_W3, CB.PLAN_W4}))
-async def cb_workout_week(cb: CallbackQuery, state: FSMContext) -> None:
-    if await reject_if_busy(cb):
-        return
-    if not cb.data or not cb.from_user:
-        await safe_answer(cb)
-        return
-    week_map = {CB.PLAN_W1: 1, CB.PLAN_W2: 2, CB.PLAN_W3: 3, CB.PLAN_W4: 4}
-    week = week_map[cb.data]
-    uid = cb.from_user.id
-    ready = await get_workout_ready_weeks(uid)
-    if week > 1 and (week - 1) not in ready:
-        await cb.answer(WORKOUT_WEEK_LOCKED, show_alert=True)
-        return
-    await cb.answer()
-    cached = await get_workout_week_body(uid, week)
-    if cached:
-        await _send_workout_chunks(
-            cb.message,
-            cached,
-            header=f"Неделя {week} · из памяти бота",
-        )
-        return
-    data = await state.get_data()
-    loading = await cb.message.answer(
-        workout_generating_week_html(week),
+    data = dict(await state.get_data())
+    meas = await get_latest_body_measurement(user_id)
+    if meas:
+        data["body_measurements"] = meas
+
+    loading = await message.answer(
+        workout_generating_html(weekday_ru),
         parse_mode="HTML",
     )
-    prev = await get_workout_week_body(uid, week - 1) if week > 1 else None
-    excerpt = (prev[-3200:] if prev else None)
-    prompt = workout_prompt_week(data, week, excerpt)
+    prompt = workout_prompt_today(data, today.weekday())
     result: str | None = None
     try:
-        await task_manager.run(uid, "workout")
-        result = await generate_workout(prompt, max_tokens=2200)
+        await task_manager.run(user_id, "workout")
+        result = await generate_workout(prompt, max_tokens=1600)
     finally:
-        task_manager.release(uid)
+        task_manager.release(user_id)
     try:
         await loading.delete()
     except Exception:
         pass
+
     if not result:
-        await cb.message.answer(WORKOUT_WEEK_FAIL)
+        await message.answer(WORKOUT_FAIL, reply_markup=workout_today_kb())
         return
+
     text = remove_all_html(result)
-    await save_workout_week_body(uid, week, text)
-    await _send_workout_chunks(cb.message, text, header=f"Неделя {week}")
-    ready2 = await get_workout_ready_weeks(uid)
-    try:
-        await cb.message.edit_reply_markup(reply_markup=workout_plan_kb(ready2))
-    except Exception:
-        pass
-
-
-@router.callback_query(F.data == CB.PLAN_TODAY)
-async def cb_workout_today(cb: CallbackQuery, state: FSMContext) -> None:
-    await cb.answer()
-    uid = cb.from_user.id if cb.from_user else 0
-    wd = date.today().weekday()
-    names = (
-        "понедельник",
-        "вторник",
-        "среда",
-        "четверг",
-        "пятница",
-        "суббота",
-        "воскресенье",
+    await save_workout_day_body(user_id, day_key, text)
+    await _send_workout_chunks(
+        message,
+        text,
+        header_html=workout_today_header_html(weekday_ru, day_label, from_cache=False),
     )
-    ready = await get_workout_ready_weeks(uid)
-    kb = workout_plan_kb(ready)
-    if wd not in (0, 2, 4):
-        await cb.message.answer(WORKOUT_TODAY_REST, parse_mode="HTML", reply_markup=kb)
-    else:
-        await cb.message.answer(
-            workout_today_train_html(names[wd]),
-            parse_mode="HTML",
-            reply_markup=kb,
-        )
+    await message.answer(
+        POST_GEN_MENU,
+        parse_mode="HTML",
+        reply_markup=workout_today_kb(show_refresh=True),
+    )
 
 
-@router.callback_query(F.data == CB.PLAN_RESET)
-async def cb_workout_plan_reset(cb: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(F.data == CB.WORKOUT)
+async def cb_workout_today(cb: CallbackQuery, state: FSMContext) -> None:
+    if await reject_if_busy(cb):
+        return
     if not cb.from_user:
         await safe_answer(cb)
         return
-    uid = cb.from_user.id
-    ready = await get_workout_ready_weeks(uid)
-    if not ready:
-        await cb.answer(WORKOUT_PLAN_EMPTY, show_alert=True)
+    await safe_answer(cb)
+    await _deliver_workout_today(cb.message, state, cb.from_user.id, force_refresh=False)
+
+
+@router.callback_query(F.data == CB.WORKOUT_REFRESH)
+async def cb_workout_refresh(cb: CallbackQuery, state: FSMContext) -> None:
+    if await reject_if_busy(cb):
         return
-    await clear_workout_plan(uid)
-    await cb.answer(WORKOUT_PLAN_CLEARED, show_alert=True)
-    ready2 = await get_workout_ready_weeks(uid)
-    try:
-        await cb.message.edit_text(
-            workout_plan_hub_html(ready2),
-            parse_mode="HTML",
-            reply_markup=workout_plan_kb(ready2),
-        )
-    except Exception:
-        pass
-
-
-@router.callback_query(F.data == CB.PLAN_HUB_BACK)
-async def cb_workout_hub_back(cb: CallbackQuery, state: FSMContext) -> None:
-    await cb.answer()
-    try:
-        await cb.message.edit_text(
-            POST_GEN_MENU,
-            parse_mode="HTML",
-            reply_markup=post_gen_kb(),
-        )
-    except Exception:
-        await cb.message.answer(POST_GEN_MENU, parse_mode="HTML", reply_markup=post_gen_kb())
+    if not cb.from_user:
+        await safe_answer(cb)
+        return
+    await safe_answer(cb)
+    await delete_workout_day(cb.from_user.id, date.today().isoformat())
+    await _deliver_workout_today(cb.message, state, cb.from_user.id, force_refresh=True)
 
 
 # ─── Питание + вода ───────────────────────────
@@ -849,13 +914,9 @@ async def view_measurements(cb: CallbackQuery, state: FSMContext) -> None:
     )
     text += f"\n\n🕒 Обновлено: {created}"
     if rec["runninghub_status"] == "ok":
-        text += "\n✅ Обработано"
-        if rec["runninghub_result_url"]:
-            text += f"\nРезультат: {rec['runninghub_result_url']}"
-        else:
-            text += "\nФото с подписями замеров отправлялось в чат при сохранении."
+        text += "\n✅ Фото с подписями замеров было сгенерировано (см. сообщения выше при сохранении)."
     else:
-        text += "\n⚠️ Результат пока недоступен"
+        text += "\n⚠️ Подписи на фото пока не готовы — можно отправить фото замеров ещё раз."
     await cb.message.answer(text, parse_mode="HTML", reply_markup=post_gen_kb())
 
 
@@ -975,7 +1036,7 @@ async def meas_photo(message: Message, state: FSMContext) -> None:
     status = "error"
     try:
         if not (DASHSCOPE_API_KEY or "").strip():
-            reason = "Не задан ключ API для генерации изображения (DASHSCOPE_API_KEY / ALIBABA_MODEL_STUDIO_API_KEY)."
+            reason = "Генерация изображения временно недоступна."
         else:
             prompt = body_measurements_overlay_prompt(measurements)
             overlay = await edit_measurements_overlay_qwen(photo_bytes, prompt)
@@ -1017,9 +1078,9 @@ async def meas_photo(message: Message, state: FSMContext) -> None:
         text += "\n⚠️ Подписи на фото сгенерировать не удалось; замеры в базе сохранены."
         if reason:
             if "sensitive" in reason.lower() or "e005" in reason.lower():
-                text += "\nПричина: запрос отклонён по контент-политике. Попробуйте другое фото (более нейтральное) или повторите позже."
+                text += "\nПричина: запрос отклонён по правилам контента. Попробуйте другое фото (более нейтральное) или повторите позже."
             else:
-                text += f"\nПричина: {_hide_service_names(reason)}"
+                text += _user_error_appendix(reason)
     await state.set_state(PostGen.menu)
     await message.answer(text, parse_mode="HTML", reply_markup=post_gen_kb())
 

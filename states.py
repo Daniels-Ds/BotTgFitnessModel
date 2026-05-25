@@ -8,6 +8,7 @@ class Onboarding(StatesGroup):
     height       = State()   # рост
     weight       = State()   # вес
     activity     = State()   # уровень активности
+    cycle        = State()   # фаза цикла (только женщины)
     muscles      = State()   # выбор групп мышц + %
     generating   = State()   # идёт генерация
 

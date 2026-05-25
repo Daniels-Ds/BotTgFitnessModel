@@ -14,19 +14,7 @@ RH_TEXT_PROMPT_NODE_ID = os.getenv("RH_TEXT_PROMPT_NODE_ID", "176")
 RH_TEXT_PROMPT_FIELD_NAME = os.getenv("RH_TEXT_PROMPT_FIELD_NAME", "text")
 RH_TEXT_MAX_WAIT_SEC = int(os.getenv("RH_TEXT_MAX_WAIT_SEC", "180"))
 
-# OpenRouter (опционально, legacy; чат и резерв картинки — через DashScope ниже)
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_CHAT_COMPLETIONS_URL = os.getenv(
-    "OPENROUTER_CHAT_COMPLETIONS_URL",
-    "https://openrouter.ai/api/v1/chat/completions",
-)
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "qwen/qwen3.6-flash")
-# Модель с output modality image (legacy OpenRouter; основной поток — Qwen Image Edit в DashScope).
-# Резерв при отказе/пустом ответе — OPENROUTER_IMAGE_FALLBACK_MODEL (slug с openrouter.ai/models?output_modalities=image).
-OPENROUTER_IMAGE_MODEL = os.getenv("OPENROUTER_IMAGE_MODEL", "sourceful/riverflow-v2-max-preview")
-OPENROUTER_IMAGE_FALLBACK_MODEL = os.getenv("OPENROUTER_IMAGE_FALLBACK_MODEL", "").strip()
-
-# Alibaba Model Studio / DashScope (тот же ключ, что в консоли Model Studio → API Key)
+# Alibaba Model Studio / DashScope (текст, оверлей замеров на фото)
 DASHSCOPE_API_KEY = (
     os.getenv("DASHSCOPE_API_KEY") or os.getenv("ALIBABA_MODEL_STUDIO_API_KEY") or ""
 ).strip()
@@ -42,119 +30,106 @@ DASHSCOPE_QWEN_IMAGE_EDIT_MODEL = os.getenv(
     "DASHSCOPE_QWEN_IMAGE_EDIT_MODEL",
     "qwen-image-2.0",
 ).strip()
-# Кадр «после»: slug из списка моделей Model Studio (intl), не «человеческое» имя — иначе 400 Model not exist.
-# См. https://www.alibabacloud.com/help/en/model-studio/models — серия qwen-image-edit-plus.
+# Legacy-модуль qwen (оверлей замеров); кадр «после» — fal.ai Hunyuan instruct edit.
 DASHSCOPE_QWEN_IMAGE_EDIT_AFTER_MODEL = os.getenv(
     "DASHSCOPE_QWEN_IMAGE_EDIT_AFTER_MODEL",
     "qwen-image-edit-plus",
 ).strip()
-# Для кадра «после»: prompt_extend часто переписывает промпт и модель остаётся «слишком близко» к исходнику — по умолчанию выкл.
 DASHSCOPE_QWEN_AFTER_PROMPT_EXTEND = os.getenv(
     "DASHSCOPE_QWEN_AFTER_PROMPT_EXTEND", "false"
 ).strip().lower() in ("1", "true", "yes")
 DASHSCOPE_QWEN_IMAGE_EDIT_SIZE = os.getenv("DASHSCOPE_QWEN_IMAGE_EDIT_SIZE", "1080*1920").strip()
-# Видео Wan 2.2 image-to-video (полуоборот ~180°, async task)
-DASHSCOPE_WAN_I2V_MODEL = os.getenv("DASHSCOPE_WAN_I2V_MODEL", "wan2.2-i2v-plus").strip()
-DASHSCOPE_WAN_I2V_RESOLUTION = os.getenv("DASHSCOPE_WAN_I2V_RESOLUTION", "480P").strip()
 
-
-def _parse_wan_i2v_seed(raw: str, env_name: str) -> int | None:
-    v = (raw or "").strip()
-    if not v:
-        return None
-    try:
-        n = int(v)
-    except ValueError:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "%s=%r is not an integer — seed ignored", env_name, raw
-        )
-        return None
-    if not 0 <= n <= 2147483647:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "%s=%s out of range [0, 2147483647] — seed ignored", env_name, n
-        )
-        return None
-    return n
-
-
-# Фиксированный seed из веб-консоли (опционально). Пусто = случайный seed у API.
-DASHSCOPE_WAN_I2V_SEED = _parse_wan_i2v_seed(
-    os.getenv("DASHSCOPE_WAN_I2V_SEED", ""), "DASHSCOPE_WAN_I2V_SEED"
-)
-# Второе видео («после»); если пусто — используется DASHSCOPE_WAN_I2V_SEED (если задан).
-DASHSCOPE_WAN_I2V_SEED_AFTER = _parse_wan_i2v_seed(
-    os.getenv("DASHSCOPE_WAN_I2V_SEED_AFTER", ""), "DASHSCOPE_WAN_I2V_SEED_AFTER"
-)
-
-DASHSCOPE_WAN_I2V_PROMPT_EXTEND = os.getenv("DASHSCOPE_WAN_I2V_PROMPT_EXTEND", "false").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-)
-# Wan i2v: prompt_extend часто добавляет «киношную» динамику (вплоть до танца); negative_prompt — подавляет танец/клип.
-DASHSCOPE_WAN_I2V_NEGATIVE_PROMPT = os.getenv(
-    "DASHSCOPE_WAN_I2V_NEGATIVE_PROMPT",
-    "dancing, dance moves, rhythmic sway, bouncing, jumping, twirling, leg kicks, arm choreography, runway walk, "
-    "music video, party, nightclub, hip rolls, exaggerated posing, aerobic steps, side-to-side footwork, head bopping, "
-    "zoom in, dolly in, camera orbit, handheld shake, fast cuts, jump cuts, lens flare, text overlay, watermark, "
-    "nudity, lingerie, sexualized posing",
-).strip()
-DASHSCOPE_VIDEO_POLL_INTERVAL_SEC = float(os.getenv("DASHSCOPE_VIDEO_POLL_INTERVAL_SEC", "4"))
-DASHSCOPE_VIDEO_MAX_WAIT_SEC = int(os.getenv("DASHSCOPE_VIDEO_MAX_WAIT_SEC", "600"))
-
-# В промпты (WAN / OpenRouter image) уходят «смягчённые» проценты зон: иначе модели завышают эффект.
-# UI: акценты зон 10 / 30 / 50%; здесь множитель и потолок для текста промптов (Wan / Qwen).
+# В промпты уходят «смягчённые» проценты зон: иначе модели завышают эффект.
 MUSCLE_PROMPT_SCALE = float(os.getenv("MUSCLE_PROMPT_SCALE", "0.55"))
 MUSCLE_PROMPT_MAX_PCT = int(os.getenv("MUSCLE_PROMPT_MAX_PCT", "18"))
 
-# USE_WAN_FOR_VIDEO=0 — только превью: два фото (реф + «после»), без видео Wan i2v.
-USE_WAN_FOR_VIDEO = os.getenv("USE_WAN_FOR_VIDEO", "1").strip().lower() in ("1", "true", "yes")
+# Какие ракурсы править для «после» и отдавать в Hailuo (старт/финиш поворота).
+# front,back | front | front,side,back
+PIPELINE_AFTER_VIEWS_RAW = os.getenv("PIPELINE_AFTER_VIEWS", "front,back").strip().lower()
 
-# Google Gemini Image (Nano Banana) — кадр «после»
-# gemini-2.5-flash-image | gemini-3.1-flash-image-preview | gemini-3-pro-image-preview
-GOOGLE_NANO_BANANA_MODEL = os.getenv("GOOGLE_NANO_BANANA_MODEL", "gemini-2.5-flash-image").strip()
-GOOGLE_NANO_BANANA_ASPECT_RATIO = os.getenv("GOOGLE_NANO_BANANA_ASPECT_RATIO", "9:16").strip()
 
-# Kie.ai — Seedream 4.5 Edit (опционально, AFTER_BODY_BACKEND=kie)
-KIE_API_KEY = os.getenv("KIE_API_KEY", "").strip()
-KIE_BASE_URL = os.getenv("KIE_BASE_URL", "https://api.kie.ai").rstrip("/")
-KIE_UPLOAD_BASE_URL = os.getenv("KIE_UPLOAD_BASE_URL", "https://kieai.redpandaai.co").rstrip("/")
-KIE_UPLOAD_PATH = os.getenv("KIE_UPLOAD_PATH", "images/user-uploads").strip()
-KIE_SEEDREAM_EDIT_MODEL = os.getenv("KIE_SEEDREAM_EDIT_MODEL", "seedream/4.5-edit").strip()
-KIE_SEEDREAM_ASPECT_RATIO = os.getenv("KIE_SEEDREAM_ASPECT_RATIO", "9:16").strip()
-KIE_SEEDREAM_QUALITY = os.getenv("KIE_SEEDREAM_QUALITY", "basic").strip()  # basic | high
-KIE_SEEDREAM_NSFW_CHECKER = os.getenv("KIE_SEEDREAM_NSFW_CHECKER", "true").strip().lower() in (
+_VALID_AFTER_VIEWS = frozenset({"front", "side", "back"})
+
+
+def pipeline_after_views() -> tuple[str, ...]:
+    names = [v.strip() for v in PIPELINE_AFTER_VIEWS_RAW.split(",") if v.strip()]
+    picked = tuple(v for v in names if v in _VALID_AFTER_VIEWS)
+    return picked if picked else ("front", "back")
+
+
+# Hailuo: 2.3 — один кадр; для анфас→спина с end_image_url — hailuo-02 (см. fal docs).
+FAL_HAILUO_DUAL_MODEL = os.getenv(
+    "FAL_HAILUO_DUAL_MODEL",
+    "fal-ai/minimax/hailuo-02/standard/image-to-video",
+).strip()
+
+# fal.ai — кадры «после» (Hunyuan Image v3 instruct edit) и видео (Hailuo 2.3)
+FAL_KEY = os.getenv("FAL_KEY", "").strip()
+FAL_QUEUE_BASE = os.getenv("FAL_QUEUE_BASE", "https://queue.fal.run").rstrip("/")
+FAL_POLL_INTERVAL_SEC = float(os.getenv("FAL_POLL_INTERVAL_SEC", "3"))
+FAL_MAX_WAIT_SEC = int(os.getenv("FAL_MAX_WAIT_SEC", "600"))
+# Скачивание готовых файлов с CDN (часто падает на прокси — ConnectTimeout).
+FAL_DOWNLOAD_RETRIES = max(1, int(os.getenv("FAL_DOWNLOAD_RETRIES", "4")))
+FAL_DOWNLOAD_CONNECT_SEC = float(os.getenv("FAL_DOWNLOAD_CONNECT_SEC", "60"))
+FAL_DOWNLOAD_READ_SEC = float(os.getenv("FAL_DOWNLOAD_READ_SEC", "600"))
+FAL_DOWNLOAD_TRY_DIRECT = os.getenv("FAL_DOWNLOAD_TRY_DIRECT", "true").strip().lower() in (
     "1",
     "true",
     "yes",
 )
-KIE_TASK_POLL_INTERVAL_SEC = float(os.getenv("KIE_TASK_POLL_INTERVAL_SEC", "3"))
-KIE_TASK_MAX_WAIT_SEC = int(os.getenv("KIE_TASK_MAX_WAIT_SEC", "600"))
 
-# auto = Google Nano Banana если GOOGLE_AI_API_KEY; kie = Seedream; qwen = DashScope Qwen
-_AFTER_BODY_BACKEND = os.getenv("AFTER_BODY_BACKEND", "auto").strip().lower()
+# Кадр «после» — https://fal.ai/models/fal-ai/hunyuan-image/v3/instruct/edit
+# Альтернативы: seedream/v4/edit, flux-2-pro/edit
+FAL_FLUX_MODEL = os.getenv(
+    "FAL_FLUX_MODEL",
+    "fal-ai/hunyuan-image/v3/instruct/edit",
+).strip()
+FAL_FLUX_ASPECT_RATIO = os.getenv("FAL_FLUX_ASPECT_RATIO", "9:16").strip()
+FAL_FLUX_OUTPUT_FORMAT = os.getenv("FAL_FLUX_OUTPUT_FORMAT", "jpeg").strip().lower()
+FAL_FLUX_GUIDANCE_SCALE = float(os.getenv("FAL_FLUX_GUIDANCE_SCALE", "3.5"))
+FAL_FLUX_ENABLE_PROMPT_EXPANSION = os.getenv("FAL_FLUX_ENABLE_PROMPT_EXPANSION", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+FAL_FLUX_SAFETY_TOLERANCE = int(os.getenv("FAL_FLUX_SAFETY_TOLERANCE", "5"))
+FAL_FLUX_ENABLE_SAFETY_CHECKER = os.getenv("FAL_FLUX_ENABLE_SAFETY_CHECKER", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+# Seedream и др.: фиксированный seed для воспроизводимости; пусто — без seed (случайно).
+_fal_flux_seed_raw = os.getenv("FAL_FLUX_SEED", "3558685").strip()
+FAL_FLUX_SEED: int | None = int(_fal_flux_seed_raw) if _fal_flux_seed_raw else None
+
+# Hailuo 2.3 — standard 768p | pro 1080p
+FAL_HAILUO_RESOLUTION = os.getenv("FAL_HAILUO_RESOLUTION", os.getenv("KIE_HAILUO_RESOLUTION", "768P")).strip().upper()
+FAL_HAILUO_DURATION = int(os.getenv("FAL_HAILUO_DURATION", os.getenv("KIE_HAILUO_DURATION", "6")))
+FAL_HAILUO_PROMPT_OPTIMIZER = os.getenv("FAL_HAILUO_PROMPT_OPTIMIZER", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
-def use_google_for_after_body() -> bool:
-    if _AFTER_BODY_BACKEND in ("qwen", "dashscope", "kie", "seedream"):
-        return False
-    if _AFTER_BODY_BACKEND in ("google", "gemini", "nano", "nano-banana", "banana"):
-        return bool(GOOGLE_AI_API_KEY)
-    return bool(GOOGLE_AI_API_KEY)
+def _fal_hailuo_duration() -> int:
+    return 10 if int(FAL_HAILUO_DURATION) > 6 else 6
 
 
-def use_kie_for_after_body() -> bool:
-    if _AFTER_BODY_BACKEND in ("qwen", "dashscope", "google", "gemini", "nano", "nano-banana", "banana"):
-        return False
-    if _AFTER_BODY_BACKEND in ("kie", "seedream"):
-        return bool(KIE_API_KEY)
-    return False
+def fal_hailuo_model_id() -> str:
+    """Модель по желаемому разрешению (env FAL_HAILUO_MODEL переопределяет)."""
+    explicit = os.getenv("FAL_HAILUO_MODEL", "").strip()
+    if explicit:
+        return explicit
+    if (FAL_HAILUO_RESOLUTION or "768P").upper() == "1080P":
+        return "fal-ai/minimax/hailuo-2.3/pro/image-to-video"
+    return "fal-ai/minimax/hailuo-2.3/standard/image-to-video"
 
-# ⚡ ВАЖНО: быстрая модель Gemini
+
+FAL_HAILUO_MODEL = fal_hailuo_model_id()
+
+# ⚡ ВАЖНО: быстрая модель Gemini (сортировка ракурсов фото)
 GEMINI_MODEL = "gemini-2.5-flash"
 
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "0"

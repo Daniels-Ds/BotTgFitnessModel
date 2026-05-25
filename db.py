@@ -45,6 +45,15 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS workout_days (
+                user_id INTEGER NOT NULL,
+                day_date TEXT NOT NULL,
+                body TEXT NOT NULL DEFAULT '',
+                updated_at REAL DEFAULT (unixepoch()),
+                PRIMARY KEY (user_id, day_date)
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS body_measurements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -279,4 +288,44 @@ async def save_workout_week_body(user_id: int, week_no: int, body: str) -> None:
 async def clear_workout_plan(user_id: int) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM workout_weeks WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+
+# ── Тренировка на сегодня (по календарной дате) ─────────────────────────
+
+
+async def get_workout_day_body(user_id: int, day_date: str) -> Optional[str]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT body FROM workout_days WHERE user_id = ? AND day_date = ?",
+            (user_id, day_date),
+        ) as cur:
+            row = await cur.fetchone()
+            if not row or not str(row[0] or "").strip():
+                return None
+            return str(row[0])
+
+
+async def save_workout_day_body(user_id: int, day_date: str, body: str) -> None:
+    text = (body or "").strip()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO workout_days(user_id, day_date, body, updated_at)
+            VALUES (?, ?, ?, unixepoch())
+            ON CONFLICT(user_id, day_date) DO UPDATE SET
+                body = excluded.body,
+                updated_at = excluded.updated_at
+            """,
+            (user_id, day_date, text),
+        )
+        await db.commit()
+
+
+async def delete_workout_day(user_id: int, day_date: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM workout_days WHERE user_id = ? AND day_date = ?",
+            (user_id, day_date),
+        )
         await db.commit()
