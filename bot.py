@@ -1,7 +1,6 @@
 import asyncio
 import logging
 
-from aiohttp import ClientTimeout
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 
@@ -17,12 +16,8 @@ async def main():
         raise RuntimeError("BOT_TOKEN is not set. Create .env from .env.example and fill secrets.")
     await init_db()
 
-    tg_timeout = ClientTimeout(
-        total=TELEGRAM_REQUEST_TIMEOUT_SEC,
-        connect=60,
-        sock_read=TELEGRAM_REQUEST_TIMEOUT_SEC,
-    )
-    session = AiohttpSession(timeout=tg_timeout)
+    # aiogram ожидает число (сек), не ClientTimeout — иначе падает start_polling.
+    session = AiohttpSession(timeout=TELEGRAM_REQUEST_TIMEOUT_SEC)
     bot = Bot(token=BOT_TOKEN, session=session)
     dp = Dispatcher(storage=SQLiteStorage())
 
