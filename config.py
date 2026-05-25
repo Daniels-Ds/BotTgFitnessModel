@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+# Загрузка видео в Telegram (альбом ~2×MP4 после долгой генерации).
+TELEGRAM_REQUEST_TIMEOUT_SEC = int(os.getenv("TELEGRAM_REQUEST_TIMEOUT_SEC", "600"))
 GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY")
 HTTPS_PROXY = os.getenv("HTTPS_PROXY") or None
 # RunningHub (опционально): только для runninghub_text_client, если зададите RH_TEXT_WEBAPP_ID + WAN_API_KEY.
@@ -67,7 +69,8 @@ FAL_HAILUO_DUAL_MODEL = os.getenv(
 # fal.ai — кадры «после» (Hunyuan Image v3 instruct edit) и видео (Hailuo 2.3)
 FAL_KEY = os.getenv("FAL_KEY", "").strip()
 FAL_QUEUE_BASE = os.getenv("FAL_QUEUE_BASE", "https://queue.fal.run").rstrip("/")
-FAL_POLL_INTERVAL_SEC = float(os.getenv("FAL_POLL_INTERVAL_SEC", "3"))
+# Интервал опроса очереди fal (subscribe по умолчанию ~0.1 с — слишком часто).
+FAL_POLL_INTERVAL_SEC = float(os.getenv("FAL_POLL_INTERVAL_SEC", "10"))
 FAL_MAX_WAIT_SEC = int(os.getenv("FAL_MAX_WAIT_SEC", "600"))
 # Скачивание готовых файлов с CDN (часто падает на прокси — ConnectTimeout).
 FAL_DOWNLOAD_RETRIES = max(1, int(os.getenv("FAL_DOWNLOAD_RETRIES", "4")))

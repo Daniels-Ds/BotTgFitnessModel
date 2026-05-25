@@ -88,7 +88,12 @@ from services.fal_flux_edit_client import edit_after_body_image_flux
 from services.fal_hailuo_video_client import generate_hailuo_fal_video
 from services.dashscope_text_client import ask_dashscope_text
 from services.gemini_service import generate_workout
-from config import DASHSCOPE_API_KEY, FAL_KEY, pipeline_after_views
+from config import (
+    DASHSCOPE_API_KEY,
+    FAL_KEY,
+    TELEGRAM_REQUEST_TIMEOUT_SEC,
+    pipeline_after_views,
+)
 from states import Measurements, Onboarding, PostGen
 from utils import init_ui, remove_all_html
 router = Router()
@@ -531,6 +536,52 @@ async def on_muscle_toggle(cb: CallbackQuery, state: FSMContext) -> None:
 # ─── Генерация видео ──────────────────────────
 
 
+async def _send_generated_videos(
+    message: Message,
+    video_current: bytes,
+    video_after: bytes,
+) -> None:
+    """Отправка двух MP4 в Telegram; увеличенный timeout и fallback по одному файлу."""
+    cap_now = "◀ Сейчас · поворот анфас → спина"
+    cap_after = "После ▶ · поворот анфас → спина, зоны из анкеты"
+    timeout = TELEGRAM_REQUEST_TIMEOUT_SEC
+    media = [
+        InputMediaVideo(
+            media=BufferedInputFile(video_current, "seychas.mp4"),
+            caption=cap_now,
+        ),
+        InputMediaVideo(
+            media=BufferedInputFile(video_after, "posle.mp4"),
+            caption=cap_after,
+        ),
+    ]
+    logger.info(
+        "telegram upload: 2 videos bytes=%s+%s timeout=%ss",
+        len(video_current),
+        len(video_after),
+        timeout,
+    )
+    for attempt in range(3):
+        try:
+            await message.answer_media_group(media, request_timeout=timeout)
+            return
+        except TelegramNetworkError as e:
+            logger.warning("answer_media_group attempt %s/3: %s", attempt + 1, e)
+            if attempt < 2:
+                await asyncio.sleep(2.0 * (attempt + 1))
+    logger.warning("media_group failed — sending videos separately")
+    await message.answer_video(
+        BufferedInputFile(video_current, "seychas.mp4"),
+        caption=cap_now,
+        request_timeout=timeout,
+    )
+    await message.answer_video(
+        BufferedInputFile(video_after, "posle.mp4"),
+        caption=cap_after,
+        request_timeout=timeout,
+    )
+
+
 async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
     user_id = cb.from_user.id
     if is_busy(user_id):
@@ -635,19 +686,23 @@ async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
         await state.set_state(PostGen.menu)
         return
 
-    media = [
-        InputMediaVideo(
-            media=BufferedInputFile(video_current, "seychas.mp4"),
-            caption="◀ Сейчас · поворот анфас → спина",
-        ),
-        InputMediaVideo(
-            media=BufferedInputFile(video_after, "posle.mp4"),
-            caption="После ▶ · поворот анфас → спина, зоны из анкеты",
-        ),
-    ]
-
-    await cb.message.answer_media_group(media)
-    await cb.message.answer(VIDEOS_READY, parse_mode="HTML", reply_markup=post_gen_kb())
+    try:
+        await _send_generated_videos(cb.message, video_current, video_after)
+        await cb.message.answer(
+            VIDEOS_READY,
+            parse_mode="HTML",
+            reply_markup=post_gen_kb(),
+            request_timeout=TELEGRAM_REQUEST_TIMEOUT_SEC,
+        )
+    except TelegramNetworkError as e:
+        logger.error("telegram video upload failed: %s", e, exc_info=True)
+        await cb.message.answer(
+            "⚠️ Видео сгенерированы, но не удалось отправить их в Telegram (таймаут сети). "
+            "Попробуйте «Снова сгенерировать видео» или /start позже.",
+            reply_markup=video_fallback_kb(),
+        )
+        await state.set_state(PostGen.menu)
+        return
     await state.set_state(PostGen.menu)
 
 

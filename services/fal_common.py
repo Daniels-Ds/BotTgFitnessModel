@@ -1,4 +1,4 @@
-"""fal.ai через официальный fal-client (subscribe_async)."""
+"""fal.ai через fal-client: submit + редкий poll очереди (FAL_POLL_INTERVAL_SEC)."""
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +16,7 @@ from config import (
     FAL_DOWNLOAD_TRY_DIRECT,
     FAL_KEY,
     FAL_MAX_WAIT_SEC,
+    FAL_POLL_INTERVAL_SEC,
     HTTPS_PROXY,
 )
 
@@ -110,22 +111,34 @@ async def run_fal_queue_job(
 
     import fal_client
 
+    poll_interval = max(1.0, float(FAL_POLL_INTERVAL_SEC))
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
-            logger.info("fal %s: subscribe model=%s", log_label, model_id)
-
-            def on_queue_update(status: Any) -> None:
-                name = type(status).__name__
-                if name in ("Queued", "InProgress"):
-                    logger.debug("fal %s queue: %s", log_label, name)
-
-            result = await fal_client.subscribe_async(
+            logger.info(
+                "fal %s: submit model=%s poll_interval=%ss",
+                log_label,
+                model_id,
+                poll_interval,
+            )
+            handle = await fal_client.submit_async(
                 model_id,
                 arguments=input_payload,
+                start_timeout=float(FAL_MAX_WAIT_SEC),
+            )
+            last_status_name: str | None = None
+            async for event in handle.iter_events(
                 with_logs=False,
-                on_queue_update=on_queue_update,
-                client_timeout=float(FAL_MAX_WAIT_SEC),
+                interval=poll_interval,
+            ):
+                name = type(event).__name__
+                if name != last_status_name:
+                    logger.info("fal %s queue: %s", log_label, name)
+                    last_status_name = name
+
+            result = await asyncio.wait_for(
+                handle.get(),
+                timeout=float(FAL_MAX_WAIT_SEC),
             )
 
             if isinstance(result, Mapping):
