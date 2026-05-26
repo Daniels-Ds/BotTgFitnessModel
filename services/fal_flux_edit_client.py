@@ -19,10 +19,10 @@ from config import (
     FAL_FLUX_SEED,
 )
 from services.fal_common import (
-    bytes_to_data_uri,
     download_fal_media,
     extract_image_url,
     run_fal_queue_job,
+    upload_bytes_to_fal_cdn,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,10 +68,10 @@ def _after_edit_log_label(model_id: str) -> str:
     return "flux-2"
 
 
-def _build_after_edit_payload(prompt: str, image_bytes: bytes) -> dict[str, Any]:
+def _build_after_edit_payload(prompt: str, image_url: str) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "prompt": (prompt or "")[:_PROMPT_MAX],
-        "image_urls": [bytes_to_data_uri(image_bytes)],
+        "image_urls": [image_url],
     }
     if FAL_FLUX_SEED is not None:
         payload["seed"] = FAL_FLUX_SEED
@@ -123,8 +123,12 @@ async def edit_after_body_image_flux(
     *,
     max_retries: int = 2,
 ) -> Optional[bytes]:
-    input_payload = _build_after_edit_payload(prompt, image_bytes)
     log_label = _after_edit_log_label(FAL_FLUX_MODEL)
+    image_url = await upload_bytes_to_fal_cdn(image_bytes, log_label=f"{log_label}-input")
+    if not image_url:
+        return None
+
+    input_payload = _build_after_edit_payload(prompt, image_url)
     if FAL_FLUX_SEED is not None:
         logger.info("%s after-edit: seed=%s", log_label, FAL_FLUX_SEED)
 

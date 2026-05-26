@@ -82,6 +82,7 @@ from prompts import (
     water_hint_text,
     workout_prompt_today,
 )
+from services.image_fit import fit_image_for_hailuo, photo_aspect_hint
 from services.photo_order import VIEWS_ORDER, order_photos_front_side_back
 from services.dashscope_qwen_image_edit_client import edit_measurements_overlay_qwen
 from services.fal_flux_edit_client import edit_after_body_image_flux
@@ -386,6 +387,9 @@ async def on_photo(message: Message, state: FSMContext) -> None:
 
     photos.append(chunk)
     await state.update_data(photos=photos)
+    hint = photo_aspect_hint(chunk)
+    if hint:
+        await message.answer(hint, parse_mode="HTML")
     n = len(photos)
     if n == 1:
         await message.answer(PHOTO_1_OK, parse_mode="HTML")
@@ -627,7 +631,7 @@ async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
     generation_ok = False
     try:
         photos_ordered = await order_photos_front_side_back(list(photos))
-        photos_before = [bytes(p) for p in photos_ordered]
+        photos_before = [fit_image_for_hailuo(bytes(p)) for p in photos_ordered]
         await state.update_data(photos_ordered=photos_before)
 
         views = pipeline_after_views()
@@ -676,9 +680,9 @@ async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
             )
         elif reason_current == "aspect_ratio" or reason_after == "aspect_ratio":
             fail_text = (
-                "⚠️ Не удалось собрать видео: неподходящие пропорции кадра.\n"
-                "Загрузите фото в портретном формате (как с камеры телефона) "
-                "или начните заново через /start.\n"
+                "⚠️ Не удалось собрать видео: кадр слишком узкий или обрезанный.\n"
+                "Пришлите 3 фото <b>в полный рост</b> в портретном режиме (9:16), "
+                "без сильного кропа по бокам, и начните заново через /start.\n"
                 "Программу тренировок и питание можно запросить ниже:"
             )
         else:

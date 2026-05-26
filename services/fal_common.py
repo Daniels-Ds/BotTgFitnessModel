@@ -34,9 +34,53 @@ def mime_and_name(image_bytes: bytes) -> tuple[str, str]:
 
 
 def bytes_to_data_uri(image_bytes: bytes) -> str:
+    """Legacy; fal queue models expect CDN https URL, not data URI."""
     mime, _ = mime_and_name(image_bytes)
     b64 = base64.b64encode(image_bytes).decode("ascii")
     return f"data:{mime};base64,{b64}"
+
+
+async def upload_bytes_to_fal_cdn(
+    image_bytes: bytes,
+    *,
+    log_label: str = "image",
+) -> Optional[str]:
+    """Загрузить байты на fal CDN; вернуть https URL для image_url / image_urls."""
+    if not FAL_KEY:
+        logger.error("FAL_KEY is not set")
+        return None
+
+    os.environ["FAL_KEY"] = FAL_KEY
+    import fal_client
+
+    mime, file_name = mime_and_name(image_bytes)
+    try:
+        upload_async = getattr(fal_client, "upload_async", None)
+        if upload_async is not None:
+            url = await upload_async(image_bytes, mime, file_name=file_name)
+        else:
+            url = await asyncio.to_thread(
+                fal_client.upload,
+                image_bytes,
+                mime,
+                file_name=file_name,
+            )
+    except Exception as e:
+        logger.error("fal upload %s failed: %s", log_label, e)
+        return None
+
+    if isinstance(url, str) and url.startswith("http"):
+        host = url.split("/")[2] if "://" in url else "?"
+        logger.info(
+            "fal upload %s ok bytes=%s host=%s",
+            log_label,
+            len(image_bytes),
+            host,
+        )
+        return url
+
+    logger.error("fal upload %s: unexpected response %r", log_label, url)
+    return None
 
 
 def _is_aspect_ratio_error(text: str) -> bool:
