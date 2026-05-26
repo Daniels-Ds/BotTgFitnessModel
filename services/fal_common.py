@@ -39,6 +39,11 @@ def bytes_to_data_uri(image_bytes: bytes) -> str:
     return f"data:{mime};base64,{b64}"
 
 
+def _is_aspect_ratio_error(text: str) -> bool:
+    low = (text or "").lower()
+    return "image_aspect_ratio" in low or "aspect ratio of the image" in low
+
+
 def _is_safety_error(text: str) -> bool:
     low = (text or "").lower()
     return any(
@@ -151,6 +156,8 @@ async def run_fal_queue_job(
             logger.warning("fal %s attempt %s: %s", log_label, attempt + 1, msg[:500])
             if _is_safety_error(msg):
                 return None, "safety"
+            if _is_aspect_ratio_error(msg):
+                return None, "aspect_ratio"
             await asyncio.sleep(1.5 * (attempt + 1))
 
     logger.error("fal %s failed: %r", log_label, last_exc)

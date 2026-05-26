@@ -21,6 +21,7 @@ from services.fal_common import (
     extract_video_url,
     run_fal_queue_job,
 )
+from services.image_fit import fit_image_for_hailuo
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,10 @@ async def generate_hailuo_fal_video(
     max_retries: int = 2,
 ) -> tuple[Optional[bytes], str]:
     """i2v: стартовый кадр (анфас); опционально end_image_url (спина) для поворота 180°."""
+    start_image = fit_image_for_hailuo(start_image)
+    if end_image:
+        end_image = fit_image_for_hailuo(end_image)
+
     duration = str(_fal_hailuo_duration())
     start_sha = hashlib.sha256(start_image).hexdigest()[:12]
     model_id = FAL_HAILUO_MODEL
