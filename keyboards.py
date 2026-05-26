@@ -15,6 +15,16 @@ def welcome_kb() -> InlineKeyboardMarkup:
     return kb([[btn("✨ Давайте начнём", CB.START_FLOW)]])
 
 
+def photo_aspect_kb(*, show_keep: bool) -> InlineKeyboardMarkup:
+    rows = [
+        [btn("📷 Заменить это фото", CB.PHOTO_REPLACE)],
+        [btn("🔄 Загрузить 3 фото заново", CB.PHOTO_RESTART_ALL)],
+    ]
+    if show_keep:
+        rows.append([btn("✅ Оставить и продолжить", CB.PHOTO_KEEP)])
+    return kb(rows)
+
+
 def gender_kb() -> InlineKeyboardMarkup:
     return kb(
         [

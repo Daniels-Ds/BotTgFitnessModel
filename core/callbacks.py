@@ -33,3 +33,7 @@ class CB:
 
     WATER_ADD = "water_add"
     WATER_RESET = "water_reset"
+
+    PHOTO_REPLACE = "ph_replace"
+    PHOTO_RESTART_ALL = "ph_restart"
+    PHOTO_KEEP = "ph_keep"

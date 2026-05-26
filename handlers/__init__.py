@@ -32,6 +32,7 @@ from keyboards import (
     edit_menu_kb,
     gender_kb,
     muscle_kb,
+    photo_aspect_kb,
     post_gen_kb,
     video_fallback_kb,
     water_footer_kb,
@@ -62,6 +63,7 @@ from messages import (
     PHOTO_1_OK,
     PHOTO_2_OK,
     PHOTO_3_OK,
+    photo_resend_prompt,
     POST_GEN_MENU,
     VIDEOS_READY,
     WELCOME,
@@ -354,7 +356,13 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 async def start_flow(cb: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await state.set_state(Onboarding.photos)
-    await state.update_data(photos=[], muscles={}, water_ml_today=0)
+    await state.update_data(
+        photos=[],
+        muscles={},
+        water_ml_today=0,
+        photo_aspect_warn_idx=None,
+        photo_replace_at=None,
+    )
     await safe_answer(cb)
     try:
         await cb.message.edit_text(ASK_PHOTOS, parse_mode="HTML")
@@ -365,44 +373,163 @@ async def start_flow(cb: CallbackQuery, state: FSMContext) -> None:
 # ─── Фото ─────────────────────────────────────
 
 
-@router.message(StateFilter(Onboarding.photos), F.photo)
-async def on_photo(message: Message, state: FSMContext) -> None:
-    data = await state.get_data()
-    photos: list[bytes] = list(data.get("photos") or [])
-    if len(photos) >= 3:
-        await message.answer("Уже есть 3 фото. Используйте «Изменить параметры» или /start.")
-        return
+async def _send_photo_step_ack(message: Message, state: FSMContext, n: int) -> None:
+    if n == 1:
+        await message.answer(PHOTO_1_OK, parse_mode="HTML")
+    elif n == 2:
+        await message.answer(PHOTO_2_OK, parse_mode="HTML")
+    elif n >= 3:
+        await message.answer(PHOTO_3_OK, parse_mode="HTML")
+        await state.set_state(Onboarding.gender)
+        await message.answer(ASK_GENDER, parse_mode="HTML", reply_markup=gender_kb())
 
+
+async def _download_tg_photo(message: Message) -> bytes | None:
     try:
         buf = await message.bot.download(message.photo[-1])
         try:
-            chunk = buf.read()
+            return buf.read()
         finally:
             if hasattr(buf, "close"):
                 buf.close()
     except Exception as e:
         logger.warning("photo download: %s", e)
+        return None
+
+
+async def _apply_photo_chunk(
+    message: Message,
+    state: FSMContext,
+    chunk: bytes,
+    *,
+    replace_at: int | None,
+) -> None:
+    data = await state.get_data()
+    photos: list[bytes] = list(data.get("photos") or [])
+
+    if replace_at is not None:
+        if replace_at == len(photos):
+            photos.append(chunk)
+        elif 0 <= replace_at < len(photos):
+            photos[replace_at] = chunk
+        else:
+            photos.append(chunk)
+        await state.update_data(photos=photos, photo_replace_at=None)
+    else:
+        if data.get("photo_aspect_warn_idx") is not None:
+            await state.update_data(photo_aspect_warn_idx=None)
+        photos.append(chunk)
+        await state.update_data(photos=photos)
+
+    n = len(photos)
+    hint = photo_aspect_hint(chunk)
+    if hint:
+        await state.update_data(photo_aspect_warn_idx=n - 1)
+        if n < 3:
+            hint += (
+                "\n\n<b>Заменить</b> это фото или <b>начать с 3 фото заново</b> — кнопки ниже. "
+                "Можно и просто прислать <b>следующее</b> фото."
+            )
+        else:
+            hint += (
+                "\n\n<b>Заменить</b> третье фото, <b>загрузить все 3 заново</b> "
+                "или нажать <b>«Оставить и продолжить»</b>."
+            )
+        await message.answer(
+            hint,
+            parse_mode="HTML",
+            reply_markup=photo_aspect_kb(show_keep=(n >= 3)),
+        )
+        if n < 3:
+            await _send_photo_step_ack(message, state, n)
+        return
+
+    await state.update_data(photo_aspect_warn_idx=None)
+    await _send_photo_step_ack(message, state, n)
+
+
+@router.message(StateFilter(Onboarding.photos), F.photo)
+async def on_photo(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    photos: list[bytes] = list(data.get("photos") or [])
+    replace_at = data.get("photo_replace_at")
+    if replace_at is None and len(photos) >= 3:
+        if data.get("photo_aspect_warn_idx") is not None:
+            await message.answer(
+                "Сначала замените третье фото, нажмите «Оставить и продолжить» "
+                "или загрузите все 3 заново — кнопки под предупреждением выше.",
+            )
+        else:
+            await message.answer("Уже есть 3 фото. Используйте «Изменить параметры» или /start.")
+        return
+
+    chunk = await _download_tg_photo(message)
+    if chunk is None:
         await message.answer(ERROR_NOT_PHOTO)
         return
 
-    photos.append(chunk)
-    await state.update_data(photos=photos)
-    hint = photo_aspect_hint(chunk)
-    if hint:
-        await message.answer(hint, parse_mode="HTML")
-    n = len(photos)
-    if n == 1:
-        await message.answer(PHOTO_1_OK, parse_mode="HTML")
-    elif n == 2:
-        await message.answer(PHOTO_2_OK, parse_mode="HTML")
-    else:
-        await state.set_state(Onboarding.gender)
-        await message.answer(PHOTO_3_OK, parse_mode="HTML")
-        await message.answer(ASK_GENDER, parse_mode="HTML", reply_markup=gender_kb())
+    await _apply_photo_chunk(
+        message,
+        state,
+        chunk,
+        replace_at=replace_at if replace_at is not None else None,
+    )
+
+
+@router.callback_query(StateFilter(Onboarding.photos), F.data == CB.PHOTO_REPLACE)
+async def on_photo_aspect_replace(cb: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    photos: list[bytes] = list(data.get("photos") or [])
+    idx = data.get("photo_aspect_warn_idx")
+    if idx is None or not isinstance(idx, int) or idx < 0 or idx >= len(photos):
+        await safe_answer(cb, "Нечего заменять — пришлите следующее фото.", alert=True)
+        return
+    photos.pop(idx)
+    await state.update_data(
+        photos=photos,
+        photo_replace_at=idx,
+        photo_aspect_warn_idx=None,
+    )
+    await safe_answer(cb)
+    await cb.message.answer(photo_resend_prompt(idx), parse_mode="HTML")
+
+
+@router.callback_query(StateFilter(Onboarding.photos), F.data == CB.PHOTO_RESTART_ALL)
+async def on_photo_aspect_restart(cb: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(
+        photos=[],
+        photo_aspect_warn_idx=None,
+        photo_replace_at=None,
+    )
+    await safe_answer(cb)
+    await cb.message.answer(ASK_PHOTOS, parse_mode="HTML")
+
+
+@router.callback_query(StateFilter(Onboarding.photos), F.data == CB.PHOTO_KEEP)
+async def on_photo_aspect_keep(cb: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    photos: list[bytes] = list(data.get("photos") or [])
+    if data.get("photo_aspect_warn_idx") is None:
+        await safe_answer(cb, "Предупреждение уже неактуально.", alert=True)
+        return
+    if len(photos) < 3:
+        await safe_answer(cb, "Сначала загрузите 3 фото.", alert=True)
+        return
+    await state.update_data(photo_aspect_warn_idx=None, photo_replace_at=None)
+    await safe_answer(cb)
+    await _send_photo_step_ack(cb.message, state, 3)
 
 
 @router.message(StateFilter(Onboarding.photos))
 async def on_photo_bad(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    if data.get("photo_replace_at") is not None:
+        slot = int(data["photo_replace_at"])
+        await message.answer(
+            f"{photo_resend_prompt(slot)}\n\n(Нужно именно <b>фото</b>, не файл.)",
+            parse_mode="HTML",
+        )
+        return
     await message.answer(ERROR_NOT_PHOTO)
 
 
