@@ -287,45 +287,23 @@ def after_body_edit_prompt(data: dict, view: str | None = None) -> str:
     return after_body_image_prompt(data, view=view)
 
 
-def _hailuo_turn_prompt(*, after: bool, dual_frame: bool) -> str:
-    """Hailuo i2v: image_url = анфас; end_image_url = спина (если dual_frame)."""
-    if dual_frame:
-        frame_hint = (
-            "The first frame is front-facing full body; the last frame must match the provided back view. "
-            "Interpolate a smooth in-place turn from front to back between these two references."
-        )
-    else:
-        frame_hint = (
-            "Starting from this front-facing full-body photo, the same person smoothly turns in place "
-            "from facing the camera to showing their back."
-        )
-    motion_rules = (
-        "MOTION (strict): only a slow 180° turn in place — no steps, no sway, no head bobbing, no posing. "
-        "If arms are spread wide in the photo, the ONLY extra motion allowed is gently lowering arms to the sides, "
-        "then continue the turn; no other arm or leg gestures. "
-        "PHYSICS / TEXTURES: respect floor and background — feet stay on the ground, no sinking or clipping through "
-        "floor, walls, or props; clothing and body must not pass through solid surfaces; stable contact shadows."
-    )
-    base = (
-        f"{frame_hint} Fixed camera, no zoom, no cuts. "
-        f"{motion_rules} "
-        "Natural continuous rotation over 180 degrees. Same outfit, hair, and lighting. "
-        "Neutral studio background. No dancing, no waving, no scene change."
-    )
-    if after:
-        return base + " Preserve the athletic body shape visible in both reference frames."
-    return (
-        base
-        + " Match the body exactly as in the reference frames — no slimming or muscle enhancement, only the turn."
-    )
+HAILUO_TURN_VIDEO_PROMPT = (
+    "Static camera. Person turns body 180 degrees in place.\n"
+    "The person slowly rotates in place 180 degrees to show their back.\n"
+    "Smooth, natural rotation. No dancing, no arm movements, no extra gestures.\n"
+    "Feet stay in place. Camera is fixed, no zoom, no pan.\n"
+    "Same lighting and background throughout."
+)
 
 
 def hailuo_before_turn_prompt(*, dual_frame: bool = True) -> str:
-    return _hailuo_turn_prompt(after=False, dual_frame=dual_frame)
+    """Hailuo i2v «до»: image_url = анфас; end_image_url = спина (если dual_frame)."""
+    return HAILUO_TURN_VIDEO_PROMPT
 
 
 def hailuo_after_turn_prompt(*, dual_frame: bool = True) -> str:
-    return _hailuo_turn_prompt(after=True, dual_frame=dual_frame)
+    """Hailuo i2v «после»: тот же промпт поворота."""
+    return HAILUO_TURN_VIDEO_PROMPT
 
 
 def body_measurements_overlay_prompt(values: dict[str, int]) -> str:
