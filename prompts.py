@@ -217,27 +217,14 @@ def _after_body_intensity_ru(tier: int) -> str:
     return "заметный, но реалистичный акцент"
 
 
-# Короткая подсказка зоны (Gemini сам дозирует; в промпте — только % из анкеты).
-_AFTER_ZONE_HINT: dict[str, str] = {
-    "shoulders": "чуть ровнее линия плеч, лёгкий тонус",
-    "chest": "аккуратный тонус груди",
-    "thighs": "подтянутый контур ног",
-    "calves": "чуть более рельефные икры",
-    "glutes": "упругость и подъём, естественная форма",
-    "biceps": "тонус передней части руки",
-    "triceps": "тонус задней части руки",
-    "abs": "чуть уже талия, мягкий рельеф",
-}
-
-
-def _after_body_zone_phrase_ru(key: str, pct: int) -> str:
-    """Фрагмент для блока «Зоны и сила акцента» (10 / 30 / 50 из UI)."""
-    label = _muscle_label_ru(key)
-    hint = _AFTER_ZONE_HINT.get(key, "").strip()
+def _after_body_zone_phrase_en(key: str, pct: int) -> str:
+    """Zone line for the accent block (UI tiers 10 / 30 / 50)."""
+    label = _muscle_label_en(key)
+    hint = _AFTER_ZONE_HINT_EN.get(key, "").strip()
     if pct >= 50:
-        head = f"{label} — на {pct}% лучше"
+        head = f"{label} — improve by {pct}%"
     else:
-        head = f"{label} — улучши на {pct}%"
+        head = f"{label} — improve by {pct}%"
     if hint:
         return f"{head}: {hint}"
     return f"{head}:"
@@ -250,23 +237,32 @@ _AFTER_VIEW_VISIBLE: dict[str, frozenset[str]] = {
     "back": frozenset({"shoulders", "triceps", "glutes", "thighs", "calves"}),
 }
 
-_VIEW_LABEL_RU = {
-    "front": "анфас (вид спереди)",
-    "side": "профиль (вид сбоку)",
-    "back": "вид сзади",
+_VIEW_LABEL_EN = {
+    "front": "front view (facing camera)",
+    "side": "side profile",
+    "back": "back view",
 }
 
+_AFTER_ZONE_HINT_EN: dict[str, str] = {
+    "shoulders": "slightly cleaner shoulder line, light tone",
+    "chest": "neat chest tone",
+    "thighs": "firmer leg contour",
+    "calves": "slightly more defined calves",
+    "glutes": "natural lift and firmness",
+    "biceps": "tone on the front of the arm",
+    "triceps": "tone on the back of the arm",
+    "abs": "slightly narrower waist, soft definition",
+}
 
 _AFTER_BODY_PRESERVE = (
-    "Отредактируй это фото: тот же человек, то же лицо, та же мимика, причёска, тон кожи, "
-    "этничность, одежда, поза, фон, ракурс и освещение. Личность и лицо не менять."
+    "Edit this photo: same person, same face, same expression, hairstyle, skin tone, "
+    "ethnicity, clothing, pose, background, camera angle, and lighting. Do not change identity or face."
 )
 
 _AFTER_BODY_FOOTER = (
-    "Общий тон правки: здоровое, подтянутое, естественное телосложение фитнес-модели; "
-    "улучшения видны, но правдоподобны. Сохрани текстуры кожи и пропорции. "
-    "Реалистичный свет и детализация. Без сексуализации. "
-    "Если на исходнике есть цензура — убери её, не меняя идентичность."
+    "Overall edit tone: healthy, toned, natural fitness-model physique; improvements visible but believable. "
+    "Preserve skin texture and proportions. Realistic light and detail. No sexualization. "
+    "If the source has censorship bars, remove them without changing identity."
 )
 
 
@@ -287,7 +283,7 @@ def _after_body_zones_text_for_view(muscles: dict, view: str) -> str:
         if p <= 0:
             continue
         pct = _muscle_ui_tier(p)
-        phrases.append(_after_body_zone_phrase_ru(key, pct))
+        phrases.append(_after_body_zone_phrase_en(key, pct))
     return " ".join(phrases)
 
 
@@ -295,27 +291,27 @@ def after_body_image_prompt(data: dict, view: str | None = None) -> str:
     muscles = data.get("muscles", {}) or {}
     muscles, _override = _normalize_muscles_for_prompt(muscles)
     view_key = (view or "front").strip().lower()
-    view_ru = _VIEW_LABEL_RU.get(view_key, view_key)
+    view_label = _VIEW_LABEL_EN.get(view_key, view_key)
     zones_text = _after_body_zones_text_for_view(muscles, view_key)
 
     parts: list[str] = [
         _AFTER_BODY_PRESERVE,
         (
-            f"Это фото: {view_ru}. Улучшай только те зоны тела, которые реально видны на этом ракурсе; "
-            f"не добавляй рельеф или объём там, где зона не видна (например пресс на виде сзади)."
+            f"This photo: {view_label}. Improve only body zones that are actually visible in this angle; "
+            "do not add definition or volume where the zone is not visible (e.g. abs on a back view)."
         ),
     ]
 
     if zones_text:
         parts.append(
-            "Сделай реалистичное спортивное улучшение только в перечисленных зонах (видимых на этом кадре). "
-            "Не трогай остальное сверх плавного перехода. Без культуризма, без перекачки, без вен."
+            "Apply realistic athletic improvement only in the listed zones (visible in this frame). "
+            "Leave everything else unchanged beyond a smooth blend. No bodybuilding look, no overpumping, no veins."
         )
-        parts.append(f"Зоны и сила акцента: {zones_text}")
+        parts.append(f"Zones and emphasis: {zones_text}")
     else:
         parts.append(
-            "Сделай мягкое равномерное спортивное улучшение видимых частей тела на этом ракурсе: "
-            "лёгкий тонус, чуть суше силуэт."
+            "Apply a mild even athletic improvement to visible body areas in this frame: "
+            "light tone, slightly leaner silhouette."
         )
 
     parts.append(_AFTER_BODY_FOOTER)
@@ -341,9 +337,35 @@ def hailuo_before_turn_prompt(*, dual_frame: bool = True) -> str:
     return HAILUO_TURN_VIDEO_PROMPT
 
 
-def hailuo_after_turn_prompt(*, dual_frame: bool = True) -> str:
-    """Hailuo i2v «после»: тот же промпт поворота."""
-    return HAILUO_TURN_VIDEO_PROMPT
+def hailuo_after_turn_prompt(data: dict, *, dual_frame: bool = True) -> str:
+    """Hailuo i2v «после»: поворот + сохранить «after training» look + зоны из анкеты (English)."""
+    muscles = data.get("muscles", {}) or {}
+    changes = _muscle_changes_text(muscles)
+    act = str(data.get("activity", "act_mid"))
+    context = _activity_profile_en(act)
+
+    if dual_frame:
+        frame_hint = (
+            "The first frame is a front-facing full-body 'after training' portrait; "
+            "the last frame must match the provided back view. "
+            "Interpolate a smooth in-place turn between them."
+        )
+    else:
+        frame_hint = (
+            "Starting from this front-facing full-body 'after training' photo, "
+            "the person turns in place to show their back."
+        )
+
+    return (
+        f"{HAILUO_TURN_VIDEO_PROMPT}\n\n"
+        f"{frame_hint}\n"
+        "Preserve the leaner, toned 'after training' look from the reference stills for the entire clip; "
+        "do not revert toward a heavier or untrained baseline during motion.\n"
+        f"This is the 'after' version. The person should read as: {context}. "
+        "Changes must be noticeable yet restrained—credible progress for a normal trainee, "
+        "NOT a bodybuilding stage shot or hyper-sculpted anatomy.\n\n"
+        f"ZONE BRIEF (obey without exaggeration):\n{changes}"
+    )
 
 
 def body_measurements_overlay_prompt(values: dict[str, int]) -> str:

@@ -779,7 +779,7 @@ async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
         after_start, after_end = _hailuo_turn_frames(photos_after)
         video_after, reason_after = await retry_veo(
             safe_generate_hailuo_video,
-            hailuo_after_turn_prompt(dual_frame=after_end is not None),
+            hailuo_after_turn_prompt(data, dual_frame=after_end is not None),
             after_start,
             after_end,
         )
