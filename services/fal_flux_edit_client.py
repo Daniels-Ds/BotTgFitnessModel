@@ -68,13 +68,20 @@ def _after_edit_log_label(model_id: str) -> str:
     return "flux-2"
 
 
-def _build_after_edit_payload(prompt: str, image_url: str) -> dict[str, Any]:
+def _build_after_edit_payload(
+    prompt: str,
+    image_url: str,
+    *,
+    seed_override: int | None = None,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "prompt": (prompt or "")[:_PROMPT_MAX],
         "image_urls": [image_url],
     }
-    if FAL_FLUX_SEED is not None:
-        payload["seed"] = FAL_FLUX_SEED
+
+    seed_to_use = seed_override if seed_override is not None else FAL_FLUX_SEED
+    if seed_to_use is not None:
+        payload["seed"] = int(seed_to_use)
 
     if _is_hunyuan_model(FAL_FLUX_MODEL):
         payload.update(
@@ -121,6 +128,7 @@ async def edit_after_body_image_flux(
     image_bytes: bytes,
     prompt: str,
     *,
+    seed_override: int | None = None,
     max_retries: int = 2,
 ) -> Optional[bytes]:
     log_label = _after_edit_log_label(FAL_FLUX_MODEL)
@@ -128,9 +136,10 @@ async def edit_after_body_image_flux(
     if not image_url:
         return None
 
-    input_payload = _build_after_edit_payload(prompt, image_url)
-    if FAL_FLUX_SEED is not None:
-        logger.info("%s after-edit: seed=%s", log_label, FAL_FLUX_SEED)
+    input_payload = _build_after_edit_payload(prompt, image_url, seed_override=seed_override)
+    seed_to_use = seed_override if seed_override is not None else FAL_FLUX_SEED
+    if seed_to_use is not None:
+        logger.info("%s after-edit: seed=%s", log_label, seed_to_use)
 
     result, reason = await run_fal_queue_job(
         model_id=FAL_FLUX_MODEL,

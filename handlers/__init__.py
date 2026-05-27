@@ -201,7 +201,30 @@ def _user_error_appendix(reason: str) -> str:
 async def _prepare_photo_after_one(photo: bytes, data: dict, view: str) -> bytes:
     """«После» — fal Seedream/Flux edit; при ошибке — исходный кадр."""
     prompt = after_body_edit_prompt(data, view=view)
-    out = await edit_after_body_image_flux(photo, prompt)
+    # Seed selection depends on how many muscle groups are picked at exactly 30%/50%
+    muscles = data.get("muscles") or {}
+    count_30 = 0
+    count_50 = 0
+    for _k, _v in muscles.items():
+        try:
+            p = int(_v)
+        except (TypeError, ValueError):
+            continue
+        if p == 30:
+            count_30 += 1
+        elif p == 50:
+            count_50 += 1
+
+    # Priority: 50% condition first, then "more than 4 at 30%".
+    seed_override: int
+    if count_50 >= 3:
+        seed_override = 621479
+    elif count_30 > 4:
+        seed_override = 7664571
+    else:
+        seed_override = 9896219
+
+    out = await edit_after_body_image_flux(photo, prompt, seed_override=seed_override)
     if out:
         if out == photo:
             logger.warning("after-body %s fal-flux: same bytes as input", view)
