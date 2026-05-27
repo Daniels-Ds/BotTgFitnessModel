@@ -22,6 +22,7 @@ from services.fal_common import (
     run_fal_queue_job,
     upload_bytes_to_fal_cdn,
 )
+from prompts import HAILUO_I2V_PROMPT_MAX
 from services.image_fit import fit_image_for_hailuo
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ async def generate_hailuo_fal_video(
     start_sha = hashlib.sha256(start_image).hexdigest()[:12]
     model_id = FAL_HAILUO_MODEL
     input_payload: dict = {
-        "prompt": (prompt or "")[:5000],
+        "prompt": (prompt or "")[:HAILUO_I2V_PROMPT_MAX],
         "image_url": start_url,
         "duration": duration,
         "prompt_optimizer": FAL_HAILUO_PROMPT_OPTIMIZER,

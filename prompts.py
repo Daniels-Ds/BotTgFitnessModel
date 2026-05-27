@@ -155,6 +155,38 @@ def _muscle_ui_tier(base: int) -> int:
     return 50
 
 
+HAILUO_I2V_PROMPT_MAX = 2000
+
+
+def _muscle_zone_brief_hailuo(muscles: dict) -> str:
+    """Короткий ZONE BRIEF для Hailuo (лимит промпта 2000 символов)."""
+    normalized, override = _normalize_muscles_for_prompt(muscles)
+    if not normalized:
+        return "Mild athletic tone; believable proportions; no bodybuilder look."
+
+    labels = [
+        _muscle_label_en(key)
+        for key, _short, _em in MUSCLE_GROUPS
+        if key in normalized and key in _MUSCLE_LABEL_EN
+    ]
+    if not labels:
+        return "Mild athletic tone; believable proportions; no bodybuilder look."
+
+    if override is not None:
+        tier = override
+    else:
+        tier = max(_muscle_ui_tier(int(p)) for p in normalized.values())
+    level = {
+        10: "subtle",
+        30: "moderate",
+        50: "strong but realistic",
+    }.get(tier, "moderate")
+    return (
+        f"{level} emphasis on: {', '.join(labels)}. "
+        "Natural definition only; no extra mass, veins, or bodybuilder separation."
+    )
+
+
 def _muscle_changes_text(muscles: dict) -> str:
     normalized, override = _normalize_muscles_for_prompt(muscles)
     # В режиме override хотим, чтобы в промпте фигурировали ровно 30%/50% (а не масштабированные eff).
@@ -338,34 +370,25 @@ def hailuo_before_turn_prompt(*, dual_frame: bool = True) -> str:
 
 
 def hailuo_after_turn_prompt(data: dict, *, dual_frame: bool = True) -> str:
-    """Hailuo i2v «после»: поворот + сохранить «after training» look + зоны из анкеты (English)."""
+    """Hailuo i2v «после»: поворот + after look + зоны (English, <=2000 chars)."""
     muscles = data.get("muscles", {}) or {}
-    changes = _muscle_changes_text(muscles)
-    act = str(data.get("activity", "act_mid"))
-    context = _activity_profile_en(act)
+    zones = _muscle_zone_brief_hailuo(muscles)
 
     if dual_frame:
-        frame_hint = (
-            "The first frame is a front-facing full-body 'after training' portrait; "
-            "the last frame must match the provided back view. "
-            "Interpolate a smooth in-place turn between them."
-        )
+        frame_hint = "Start: front after-training still. End: back view. Smooth in-place 180° turn."
     else:
-        frame_hint = (
-            "Starting from this front-facing full-body 'after training' photo, "
-            "the person turns in place to show their back."
-        )
+        frame_hint = "From front after-training still, turn in place to show back."
 
-    return (
+    prompt = (
         f"{HAILUO_TURN_VIDEO_PROMPT}\n\n"
         f"{frame_hint}\n"
-        "Preserve the leaner, toned 'after training' look from the reference stills for the entire clip; "
-        "do not revert toward a heavier or untrained baseline during motion.\n"
-        f"This is the 'after' version. The person should read as: {context}. "
-        "Changes must be noticeable yet restrained—credible progress for a normal trainee, "
-        "NOT a bodybuilding stage shot or hyper-sculpted anatomy.\n\n"
-        f"ZONE BRIEF (obey without exaggeration):\n{changes}"
+        "Keep the leaner toned 'after training' body from the reference stills; "
+        "do not revert to untrained baseline. Realistic fitness look, not bodybuilding.\n"
+        f"Zones: {zones}"
     )
+    if len(prompt) > HAILUO_I2V_PROMPT_MAX:
+        prompt = prompt[:HAILUO_I2V_PROMPT_MAX]
+    return prompt
 
 
 def body_measurements_overlay_prompt(values: dict[str, int]) -> str:
