@@ -69,6 +69,39 @@ def _muscles_effective_pcts(muscles: dict) -> dict[str, int]:
     return out
 
 
+def _normalize_muscles_for_prompt(muscles: dict) -> tuple[dict[str, int], int | None]:
+    """
+    Правило пользователя для промптов:
+    - если выбрано >= 3 зон по 50% => использовать 50% везде по выбранным зонам
+    - иначе если выбрано > 4 зон по 30% => использовать 30% везде по выбранным зонам
+    - иначе => стандартно (как выбрал пользователь: 10/30/50 по каждой зоне)
+    """
+    cleaned: dict[str, int] = {}
+    for key, raw in (muscles or {}).items():
+        if raw in (None, ""):
+            continue
+        try:
+            p = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if p <= 0:
+            continue
+        cleaned[key] = p
+
+    count50 = sum(1 for p in cleaned.values() if p == 50)
+    count30 = sum(1 for p in cleaned.values() if p == 30)
+
+    override: int | None = None
+    if count50 >= 3:
+        override = 50
+    elif count30 > 4:
+        override = 30
+
+    if override is None:
+        return cleaned, None
+    return {k: override for k in cleaned.keys()}, override
+
+
 def _activity_profile_en(activity: str) -> str:
     return {
         "act_low": "mostly sedentary; beginner training level",
@@ -123,9 +156,15 @@ def _muscle_ui_tier(base: int) -> int:
 
 
 def _muscle_changes_text(muscles: dict) -> str:
-    effective = _muscles_effective_pcts(muscles)
+    normalized, override = _normalize_muscles_for_prompt(muscles)
+    # В режиме override хотим, чтобы в промпте фигурировали ровно 30%/50% (а не масштабированные eff).
+    effective = (
+        {k: v for k, v in normalized.items()}
+        if override is not None
+        else _muscles_effective_pcts(normalized)
+    )
     lines: list[str] = []
-    for key, pct in (muscles or {}).items():
+    for key, pct in normalized.items():
         if not pct or key not in _MUSCLE_LABEL_EN:
             continue
         label = _muscle_label_en(key)
@@ -254,6 +293,7 @@ def _after_body_zones_text_for_view(muscles: dict, view: str) -> str:
 
 def after_body_image_prompt(data: dict, view: str | None = None) -> str:
     muscles = data.get("muscles", {}) or {}
+    muscles, _override = _normalize_muscles_for_prompt(muscles)
     view_key = (view or "front").strip().lower()
     view_ru = _VIEW_LABEL_RU.get(view_key, view_key)
     zones_text = _after_body_zones_text_for_view(muscles, view_key)
@@ -388,6 +428,7 @@ _ACT_LABEL_RU = {
 
 def _workout_muscle_goals_ru(muscles: dict) -> list[str]:
     lines: list[str] = []
+    muscles, _override = _normalize_muscles_for_prompt(muscles)
     for key, _short, _em in MUSCLE_GROUPS:
         raw = muscles.get(key)
         if not raw:
