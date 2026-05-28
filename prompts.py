@@ -158,65 +158,56 @@ def _muscle_ui_tier(base: int) -> int:
 HAILUO_I2V_PROMPT_MAX = 2000
 
 
+_AFTER_INTENSITY_TEXT_EN: dict[int, str] = {
+    10: (
+        "Subtle natural tone. Body looks lightly active, not trained.\n"
+        "Soft muscle definition, no visible separation.\n"
+        "Slight firmness only. Relaxed everyday physique.\n"
+        "No athletic emphasis on any zone."
+    ),
+    30: (
+        "Athletic but natural build. Moderate muscle definition visible.\n"
+        "Toned appearance without bulk. Fit everyday person look.\n"
+        "Light muscle shape on shoulders, arms, core, legs.\n"
+        "Realistic fitness result, not a gym obsessive."
+    ),
+    50: (
+        "Clearly trained physique. Defined muscles with visible shape.\n"
+        "Strong but not bulky. Lean with noticeable muscle tone.\n"
+        "V-taper silhouette, firm arms, defined core, solid legs.\n"
+        "Competitive fitness look, not bodybuilding."
+    ),
+}
+
+
+def _muscle_average_tier(muscles: dict) -> int:
+    """Средний tier по выбранным зонам (10/30/50), затем маппинг к ближайшему tier."""
+    values: list[int] = []
+    for key, _short, _em in MUSCLE_GROUPS:
+        raw = (muscles or {}).get(key)
+        if raw in (None, ""):
+            continue
+        try:
+            p = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if p <= 0:
+            continue
+        values.append(_muscle_ui_tier(p))
+    if not values:
+        return 10
+    avg = sum(values) / len(values)
+    return _muscle_ui_tier(int(round(avg)))
+
+
 def _muscle_zone_brief_hailuo(muscles: dict) -> str:
-    """Короткий ZONE BRIEF для Hailuo (лимит промпта 2000 символов)."""
-    normalized, override = _normalize_muscles_for_prompt(muscles)
-    if not normalized:
-        return "Mild athletic tone; believable proportions; no bodybuilder look."
-
-    labels = [
-        _muscle_label_en(key)
-        for key, _short, _em in MUSCLE_GROUPS
-        if key in normalized and key in _MUSCLE_LABEL_EN
-    ]
-    if not labels:
-        return "Mild athletic tone; believable proportions; no bodybuilder look."
-
-    if override is not None:
-        tier = override
-    else:
-        tier = max(_muscle_ui_tier(int(p)) for p in normalized.values())
-    level = {
-        10: "subtle",
-        30: "moderate",
-        50: "strong but realistic",
-    }.get(tier, "moderate")
-    return (
-        f"{level} emphasis on: {', '.join(labels)}. "
-        "Natural definition only; no extra mass, veins, or bodybuilder separation."
-    )
+    """Фиксированный текст уровня интенсивности для Hailuo (без % и без зонных списков)."""
+    tier = _muscle_average_tier(muscles)
+    return _AFTER_INTENSITY_TEXT_EN.get(tier, _AFTER_INTENSITY_TEXT_EN[30])
 
 
 def _muscle_changes_text(muscles: dict) -> str:
-    normalized, override = _normalize_muscles_for_prompt(muscles)
-    # В режиме override хотим, чтобы в промпте фигурировали ровно 30%/50% (а не масштабированные eff).
-    effective = (
-        {k: v for k, v in normalized.items()}
-        if override is not None
-        else _muscles_effective_pcts(normalized)
-    )
-    lines: list[str] = []
-    for key, pct in normalized.items():
-        if not pct or key not in _MUSCLE_LABEL_EN:
-            continue
-        label = _muscle_label_en(key)
-        eff = effective.get(key, int(pct))
-        intensity = {
-            10: "Very subtle tightening; lines slightly cleaner, close to reference; no bodybuilder bulk",
-            30: "Moderate natural definition without overall mass gain; no extreme bodybuilder separation",
-            50: "Stronger visible emphasis but still restrained; no doubled volume, no competition-level bulk",
-        }
-        base = int(pct)
-        tier = _muscle_ui_tier(base)
-        desc = intensity.get(tier, intensity[30])
-        lines.append(
-            f"- {label}: {desc}. Target emphasis ~+{eff}% (interpret as guidance only, not a literal scale multiplier)."
-        )
-    return (
-        "\n".join(lines)
-        if lines
-        else "- Whole body: minimal believable tightening, slightly leaner where soft; proportions stay close to reference; no bodybuilder look"
-    )
+    return _muscle_zone_brief_hailuo(muscles)
 
 
 # ─── Qwen Image Edit — «after» body photo ────────────────────────────
@@ -384,7 +375,7 @@ def hailuo_after_turn_prompt(data: dict, *, dual_frame: bool = True) -> str:
         f"{frame_hint}\n"
         "Keep the leaner toned 'after training' body from the reference stills; "
         "do not revert to untrained baseline. Realistic fitness look, not bodybuilding.\n"
-        f"Zones: {zones}"
+        f"Intensity profile:\n{zones}"
     )
     if len(prompt) > HAILUO_I2V_PROMPT_MAX:
         prompt = prompt[:HAILUO_I2V_PROMPT_MAX]
