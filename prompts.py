@@ -200,6 +200,11 @@ def _muscle_average_tier(muscles: dict) -> int:
     return _muscle_ui_tier(int(round(avg)))
 
 
+def after_intensity_tier(data: dict) -> int:
+    """Публичный helper: tier 10/30/50 по среднему выбранных зон."""
+    return _muscle_average_tier((data or {}).get("muscles", {}) or {})
+
+
 def _muscle_zone_brief_hailuo(muscles: dict) -> str:
     """Фиксированный текст уровня интенсивности для Hailuo (без % и без зонных списков)."""
     tier = _muscle_average_tier(muscles)

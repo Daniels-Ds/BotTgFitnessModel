@@ -17,6 +17,9 @@ from config import (
     FAL_FLUX_OUTPUT_FORMAT,
     FAL_FLUX_SAFETY_TOLERANCE,
     FAL_FLUX_SEED,
+    FAL_WAN_AFTER_SEED_10,
+    FAL_WAN_AFTER_SEED_30,
+    FAL_WAN_AFTER_SEED_50,
 )
 from services.fal_common import (
     download_fal_media,
@@ -56,11 +59,18 @@ def _uses_fal_image_size(model_id: str) -> bool:
     return _is_hunyuan_model(model_id) or _is_seedream_model(model_id)
 
 
+def _is_wan_edit_model(model_id: str) -> bool:
+    low = model_id.lower()
+    return "wan/v2.7/edit" in low or ("wan" in low and "edit" in low)
+
+
 def _fal_image_size(aspect_ratio: str) -> str:
     return _ASPECT_TO_IMAGE_SIZE.get(aspect_ratio.strip(), "portrait_16_9")
 
 
 def _after_edit_log_label(model_id: str) -> str:
+    if _is_wan_edit_model(model_id):
+        return "wan-edit"
     if _is_hunyuan_model(model_id):
         return "hunyuan"
     if _is_seedream_model(model_id):
@@ -68,13 +78,35 @@ def _after_edit_log_label(model_id: str) -> str:
     return "flux-2"
 
 
-def _build_after_edit_payload(prompt: str, image_url: str) -> dict[str, Any]:
+def _seed_for_after_tier(tier: int | None) -> int | None:
+    if tier == 10 and FAL_WAN_AFTER_SEED_10 is not None:
+        return FAL_WAN_AFTER_SEED_10
+    if tier == 30 and FAL_WAN_AFTER_SEED_30 is not None:
+        return FAL_WAN_AFTER_SEED_30
+    if tier == 50 and FAL_WAN_AFTER_SEED_50 is not None:
+        return FAL_WAN_AFTER_SEED_50
+    return FAL_FLUX_SEED
+
+
+def _build_after_edit_payload(prompt: str, image_url: str, *, seed: int | None) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "prompt": (prompt or "")[:_PROMPT_MAX],
         "image_urls": [image_url],
     }
-    if FAL_FLUX_SEED is not None:
-        payload["seed"] = FAL_FLUX_SEED
+    if seed is not None:
+        payload["seed"] = seed
+
+    if _is_wan_edit_model(FAL_FLUX_MODEL):
+        payload.update(
+            {
+                "image_size": _fal_image_size(FAL_FLUX_ASPECT_RATIO),
+                "num_images": 1,
+                "enable_prompt_expansion": FAL_FLUX_ENABLE_PROMPT_EXPANSION,
+                "enable_safety_checker": FAL_FLUX_ENABLE_SAFETY_CHECKER,
+                "output_format": FAL_FLUX_OUTPUT_FORMAT,
+            }
+        )
+        return payload
 
     if _is_hunyuan_model(FAL_FLUX_MODEL):
         payload.update(
@@ -121,6 +153,7 @@ async def edit_after_body_image_flux(
     image_bytes: bytes,
     prompt: str,
     *,
+    intensity_tier: int | None = None,
     max_retries: int = 2,
 ) -> Optional[bytes]:
     log_label = _after_edit_log_label(FAL_FLUX_MODEL)
@@ -128,9 +161,10 @@ async def edit_after_body_image_flux(
     if not image_url:
         return None
 
-    input_payload = _build_after_edit_payload(prompt, image_url)
-    if FAL_FLUX_SEED is not None:
-        logger.info("%s after-edit: seed=%s", log_label, FAL_FLUX_SEED)
+    seed = _seed_for_after_tier(intensity_tier)
+    input_payload = _build_after_edit_payload(prompt, image_url, seed=seed)
+    if seed is not None:
+        logger.info("%s after-edit: seed=%s tier=%s", log_label, seed, intensity_tier)
 
     result, reason = await run_fal_queue_job(
         model_id=FAL_FLUX_MODEL,

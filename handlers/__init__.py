@@ -76,6 +76,7 @@ from messages import (
     workout_today_header_html,
 )
 from prompts import (
+    after_intensity_tier,
     after_body_edit_prompt,
     body_measurements_overlay_prompt,
     nutrition_prompt,
@@ -201,7 +202,11 @@ def _user_error_appendix(reason: str) -> str:
 async def _prepare_photo_after_one(photo: bytes, data: dict, view: str) -> bytes:
     """«После» — fal Seedream/Flux edit; при ошибке — исходный кадр."""
     prompt = after_body_edit_prompt(data, view=view)
-    out = await edit_after_body_image_flux(photo, prompt)
+    out = await edit_after_body_image_flux(
+        photo,
+        prompt,
+        intensity_tier=after_intensity_tier(data),
+    )
     if out:
         if out == photo:
             logger.warning("after-body %s fal-flux: same bytes as input", view)

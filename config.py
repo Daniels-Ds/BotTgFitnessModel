@@ -82,11 +82,11 @@ FAL_DOWNLOAD_TRY_DIRECT = os.getenv("FAL_DOWNLOAD_TRY_DIRECT", "true").strip().l
     "yes",
 )
 
-# Кадр «после» — https://fal.ai/models/fal-ai/hunyuan-image/v3/instruct/edit
-# Альтернативы: seedream/v4/edit, flux-2-pro/edit
+# Кадр «после» — по умолчанию WAN 2.7 edit
+# https://fal.ai/models/fal-ai/wan/v2.7/edit/api
 FAL_FLUX_MODEL = os.getenv(
     "FAL_FLUX_MODEL",
-    "fal-ai/hunyuan-image/v3/instruct/edit",
+    "fal-ai/wan/v2.7/edit",
 ).strip()
 FAL_FLUX_ASPECT_RATIO = os.getenv("FAL_FLUX_ASPECT_RATIO", "9:16").strip()
 FAL_FLUX_OUTPUT_FORMAT = os.getenv("FAL_FLUX_OUTPUT_FORMAT", "jpeg").strip().lower()
@@ -105,6 +105,14 @@ FAL_FLUX_ENABLE_SAFETY_CHECKER = os.getenv("FAL_FLUX_ENABLE_SAFETY_CHECKER", "fa
 # Seedream и др.: фиксированный seed для воспроизводимости; пусто — без seed (случайно).
 _fal_flux_seed_raw = os.getenv("FAL_FLUX_SEED", "3558685").strip()
 FAL_FLUX_SEED: int | None = int(_fal_flux_seed_raw) if _fal_flux_seed_raw else None
+
+# WAN v2.7/edit: сиды по уровню интенсивности (10/30/50). Пусто => fallback на FAL_FLUX_SEED.
+_wan_after_seed_10_raw = os.getenv("FAL_WAN_AFTER_SEED_10", "").strip()
+FAL_WAN_AFTER_SEED_10: int | None = int(_wan_after_seed_10_raw) if _wan_after_seed_10_raw else None
+_wan_after_seed_30_raw = os.getenv("FAL_WAN_AFTER_SEED_30", "").strip()
+FAL_WAN_AFTER_SEED_30: int | None = int(_wan_after_seed_30_raw) if _wan_after_seed_30_raw else None
+_wan_after_seed_50_raw = os.getenv("FAL_WAN_AFTER_SEED_50", "").strip()
+FAL_WAN_AFTER_SEED_50: int | None = int(_wan_after_seed_50_raw) if _wan_after_seed_50_raw else None
 
 # Hailuo 2.3 — standard 768p | pro 1080p
 FAL_HAILUO_RESOLUTION = os.getenv("FAL_HAILUO_RESOLUTION", os.getenv("KIE_HAILUO_RESOLUTION", "768P")).strip().upper()
