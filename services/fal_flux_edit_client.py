@@ -16,10 +16,6 @@ from config import (
     FAL_FLUX_MODEL,
     FAL_FLUX_OUTPUT_FORMAT,
     FAL_FLUX_SAFETY_TOLERANCE,
-    FAL_FLUX_SEED,
-    FAL_WAN_AFTER_SEED_10,
-    FAL_WAN_AFTER_SEED_30,
-    FAL_WAN_AFTER_SEED_50,
 )
 from services.fal_common import (
     download_fal_media,
@@ -78,23 +74,11 @@ def _after_edit_log_label(model_id: str) -> str:
     return "flux-2"
 
 
-def _seed_for_after_tier(tier: int | None) -> int | None:
-    if tier == 10 and FAL_WAN_AFTER_SEED_10 is not None:
-        return FAL_WAN_AFTER_SEED_10
-    if tier == 30 and FAL_WAN_AFTER_SEED_30 is not None:
-        return FAL_WAN_AFTER_SEED_30
-    if tier == 50 and FAL_WAN_AFTER_SEED_50 is not None:
-        return FAL_WAN_AFTER_SEED_50
-    return FAL_FLUX_SEED
-
-
-def _build_after_edit_payload(prompt: str, image_url: str, *, seed: int | None) -> dict[str, Any]:
+def _build_after_edit_payload(prompt: str, image_url: str) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "prompt": (prompt or "")[:_PROMPT_MAX],
         "image_urls": [image_url],
     }
-    if seed is not None:
-        payload["seed"] = seed
 
     if _is_wan_edit_model(FAL_FLUX_MODEL):
         payload.update(
@@ -161,10 +145,8 @@ async def edit_after_body_image_flux(
     if not image_url:
         return None
 
-    seed = _seed_for_after_tier(intensity_tier)
-    input_payload = _build_after_edit_payload(prompt, image_url, seed=seed)
-    if seed is not None:
-        logger.info("%s after-edit: seed=%s tier=%s", log_label, seed, intensity_tier)
+    input_payload = _build_after_edit_payload(prompt, image_url)
+    logger.info("%s after-edit: no-seed tier=%s", log_label, intensity_tier)
 
     result, reason = await run_fal_queue_job(
         model_id=FAL_FLUX_MODEL,
