@@ -293,6 +293,27 @@ _AFTER_BODY_FOOTER = (
     "If the source has censorship bars, remove them without changing identity."
 )
 
+_AFTER_BODY_INTENSITY_EDIT_EN: dict[int, str] = {
+    10: (
+        "Subtle natural tone. Body looks lightly active, not trained.\n"
+        "Soft muscle definition, no visible separation.\n"
+        "Slight firmness only. Relaxed everyday physique.\n"
+        "No athletic emphasis on any zone."
+    ),
+    30: (
+        "Visibly athletic. Moderate muscle tone across whole body.\n"
+        "Athletic but natural build.\n"
+        "Toned appearance without bulk. Fit everyday person look.\n"
+        "Realistic fitness result, not a gym obsessive."
+    ),
+    50: (
+        "Clearly trained physique. Strong defined muscles throughout.\n"
+        "Strong but not bulky. Lean with noticeable muscle tone.\n"
+        "V-taper silhouette, firm arms, defined core, solid legs.\n"
+        "Competitive fitness look, not bodybuilding."
+    ),
+}
+
 
 def _after_body_zones_text_for_view(muscles: dict, view: str) -> str:
     """Одна строка зон для промпта (через пробел), только видимые на ракурсе."""
@@ -316,31 +337,25 @@ def _after_body_zones_text_for_view(muscles: dict, view: str) -> str:
 
 
 def after_body_image_prompt(data: dict, view: str | None = None) -> str:
-    muscles = data.get("muscles", {}) or {}
-    muscles, _override = _normalize_muscles_for_prompt(muscles)
+    tier = after_intensity_tier(data)
+    intensity_block = _AFTER_BODY_INTENSITY_EDIT_EN.get(
+        tier,
+        _AFTER_BODY_INTENSITY_EDIT_EN[30],
+    )
     view_key = (view or "front").strip().lower()
     view_label = _VIEW_LABEL_EN.get(view_key, view_key)
-    zones_text = _after_body_zones_text_for_view(muscles, view_key)
 
     parts: list[str] = [
+        # ВАЖНО: для edit-модели WAN формулировка уровня в начале даёт более сильный эффект.
+        intensity_block,
         _AFTER_BODY_PRESERVE,
         (
-            f"This photo: {view_label}. Improve only body zones that are actually visible in this angle; "
-            "do not add definition or volume where the zone is not visible (e.g. abs on a back view)."
+            f"This photo: {view_label}. Keep composition and identity unchanged. "
+            "Apply body transformation consistently to visible body areas for this view."
         ),
+        "No scene changes, no outfit changes, no face change.",
+        "No exaggerated muscles, no steroid look, no unnatural veins.",
     ]
-
-    if zones_text:
-        parts.append(
-            "Apply realistic athletic improvement only in the listed zones (visible in this frame). "
-            "Leave everything else unchanged beyond a smooth blend. No bodybuilding look, no overpumping, no veins."
-        )
-        parts.append(f"Zones and emphasis: {zones_text}")
-    else:
-        parts.append(
-            "Apply a mild even athletic improvement to visible body areas in this frame: "
-            "light tone, slightly leaner silhouette."
-        )
 
     parts.append(_AFTER_BODY_FOOTER)
     return "\n".join(parts)
