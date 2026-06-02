@@ -1,6 +1,6 @@
 # BotTgFitnessModel
 
-Telegram-бот для фитнес-сценариев: анкета, два видео (fal Hailuo 2.3), кадры «после» (fal Hunyuan Image v3 instruct edit), тренировки/питание (DashScope), замеры с оверлеем (Qwen).
+Telegram-бот для фитнес-сценариев: анкета, два видео (fal Kling O3 image-to-video), кадры «после» (fal Hunyuan Image v3 instruct edit), тренировки/питание (DashScope), замеры с оверлеем (Qwen).
 
 ## Quick start (local/server)
 
@@ -8,19 +8,19 @@ Telegram-бот для фитнес-сценариев: анкета, два в�
 2. Скопируйте `.env.example` в `.env`.
 3. Заполните обязательные переменные в `.env`:
    - `BOT_TOKEN` — токен Telegram-бота
-   - `FAL_KEY` — [fal.ai](https://fal.ai): кадры «после» ([Hunyuan v3 instruct edit](https://fal.ai/models/fal-ai/hunyuan-image/v3/instruct/edit)) и оба видео ([Hailuo 2.3](https://fal.ai/models/fal-ai/minimax/hailuo-2.3/standard/image-to-video))
+   - `FAL_KEY` — [fal.ai](https://fal.ai): кадры «после» ([Hunyuan v3 instruct edit](https://fal.ai/models/fal-ai/hunyuan-image/v3/instruct/edit)) и оба видео ([Kling O3 image-to-video](https://fal.ai/models/fal-ai/kling-video/o3/standard/image-to-video))
    - `GOOGLE_AI_API_KEY` — сортировка ракурсов фото (Gemini 2.5 Flash)
    - `DASHSCOPE_API_KEY` — тренировка на сегодня, питание, оверлей замеров (Qwen Image Edit)
-4. Опционально: `FAL_HAILUO_DURATION=6` (или `10`), `FAL_HAILUO_RESOLUTION=768P` / `1080P`, `FAL_FLUX_SEED=3558685`, `FAL_FLUX_SAFETY_TOLERANCE=5` (только Flux), `HTTPS_PROXY`.
+4. Опционально: `FAL_HAILUO_DURATION=5` (или `10`), `FAL_HAILUO_MODEL` (полный id Kling-модели, при необходимости), `FAL_FLUX_SEED=3558685`, `FAL_FLUX_SAFETY_TOLERANCE=5` (только Flux), `HTTPS_PROXY`.
 5. Установите зависимости: `pip install -r requirements.txt`
 6. Запуск: `python bot.py`
 
 ## Пайплайн генерации
 
 1. Три фото → Gemini определяет порядок анфас / профиль / спина.
-2. fal Hailuo — видео «сейчас» (кадр анфас).
+2. fal Kling O3 — видео «сейчас» (кадр анфас).
 3. fal Hunyuan Image v3 — кадр(ы) «после» (по зонам анкеты; в тесте — только анфас).
-4. fal Hailuo — видео «после» (отредактированный анфас).
+4. fal Kling O3 — видео «после» (отредактированный анфас).
 
 ## Deploy (simple VPS)
 

@@ -1,5 +1,5 @@
 """
-Хендлеры бота: онбординг, кадры «после» (fal Hunyuan), два видео (fal Hailuo).
+Хендлеры бота: онбординг, кадры «после» (fal Hunyuan), два видео (fal Kling O3).
 """
 
 from __future__ import annotations
@@ -159,6 +159,8 @@ def _hide_service_names(text: str) -> str:
         "hunyuan",
         "Hailuo",
         "hailuo",
+        "Kling",
+        "kling",
         "Minimax",
         "Flux",
         "flux",
@@ -769,7 +771,7 @@ async def _run_video_generation(cb: CallbackQuery, state: FSMContext) -> None:
         views = pipeline_after_views()
         before_start, before_end = _hailuo_turn_frames(photos_before)
         logger.info(
-            "video pipeline: after-edit views=%s; Hailuo start=front end=%s",
+            "video pipeline: after-edit views=%s; Kling start=front end=%s",
             ",".join(views),
             "back" if before_end else "none",
         )

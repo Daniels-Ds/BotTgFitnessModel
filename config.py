@@ -60,10 +60,11 @@ def pipeline_after_views() -> tuple[str, ...]:
     return picked if picked else ("front", "back")
 
 
-# Hailuo: 2.3 — один кадр; для анфас→спина с end_image_url — hailuo-02 (см. fal docs).
+# Kling O3: один кадр или start/end с `end_image_url` в одной и той же модели.
+# Названия переменных оставлены, чтобы не менять остальной код пайплайна.
 FAL_HAILUO_DUAL_MODEL = os.getenv(
     "FAL_HAILUO_DUAL_MODEL",
-    "fal-ai/minimax/hailuo-02/standard/image-to-video",
+    "fal-ai/kling-video/o3/standard/image-to-video",
 ).strip()
 
 # fal.ai — кадры «после» (Hunyuan Image v3 instruct edit) и видео (Hailuo 2.3)
@@ -125,7 +126,11 @@ FAL_HAILUO_PROMPT_OPTIMIZER = os.getenv("FAL_HAILUO_PROMPT_OPTIMIZER", "false").
 
 
 def _fal_hailuo_duration() -> int:
-    return 10 if int(FAL_HAILUO_DURATION) > 6 else 6
+    """
+    Kling O3 image-to-video принимает duration в пределах 5/10 (в интерфейсе docs),
+    поэтому маппим старый env FAL_HAILUO_DURATION (6/10) на допустимые значения.
+    """
+    return 10 if int(FAL_HAILUO_DURATION) > 6 else 5
 
 
 def fal_hailuo_model_id() -> str:
@@ -133,9 +138,8 @@ def fal_hailuo_model_id() -> str:
     explicit = os.getenv("FAL_HAILUO_MODEL", "").strip()
     if explicit:
         return explicit
-    if (FAL_HAILUO_RESOLUTION or "768P").upper() == "1080P":
-        return "fal-ai/minimax/hailuo-2.3/pro/image-to-video"
-    return "fal-ai/minimax/hailuo-2.3/standard/image-to-video"
+    # Для Kling O3 нет отдельного "standard/pro" по resolution: используем стандарт.
+    return "fal-ai/kling-video/o3/standard/image-to-video"
 
 
 FAL_HAILUO_MODEL = fal_hailuo_model_id()

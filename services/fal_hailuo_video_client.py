@@ -1,6 +1,6 @@
 """
-fal.ai — MiniMax Hailuo 2.3 image-to-video.
-https://fal.ai/models/fal-ai/minimax/hailuo-2.3/standard/image-to-video
+fal.ai — Kling O3 image-to-video (подмена старого Hailuo-клиента).
+https://fal.ai/models/fal-ai/kling-video/o3/standard/image-to-video
 """
 from __future__ import annotations
 
@@ -12,8 +12,6 @@ from typing import Optional
 from config import (
     FAL_HAILUO_DUAL_MODEL,
     FAL_HAILUO_MODEL,
-    FAL_HAILUO_PROMPT_OPTIMIZER,
-    FAL_HAILUO_RESOLUTION,
     _fal_hailuo_duration,
 )
 from services.fal_common import (
@@ -61,7 +59,6 @@ async def generate_hailuo_fal_video(
         "prompt": (prompt or "")[:HAILUO_I2V_PROMPT_MAX],
         "image_url": start_url,
         "duration": duration,
-        "prompt_optimizer": FAL_HAILUO_PROMPT_OPTIMIZER,
     }
 
     if end_image:
@@ -69,7 +66,7 @@ async def generate_hailuo_fal_video(
         input_payload["end_image_url"] = end_url
         end_sha = hashlib.sha256(end_image).hexdigest()[:12]
         logger.info(
-            "fal Hailuo submit model=%s duration=%s start_sha=%s end_sha=%s dual_frame=1",
+            "fal Kling submit model=%s duration=%s start_sha=%s end_sha=%s dual_frame=1",
             model_id,
             duration,
             start_sha,
@@ -77,16 +74,12 @@ async def generate_hailuo_fal_video(
         )
     else:
         logger.info(
-            "fal Hailuo submit model=%s duration=%s start_sha=%s bytes=%s",
+            "fal Kling submit model=%s duration=%s start_sha=%s bytes=%s",
             model_id,
             duration,
             start_sha,
             len(start_image),
         )
-
-    res = (FAL_HAILUO_RESOLUTION or "768P").upper()
-    if res in ("512P", "768P", "1080P"):
-        input_payload["resolution"] = res
 
     result, reason = await run_fal_queue_job(
         model_id=model_id,
