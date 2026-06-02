@@ -367,11 +367,14 @@ def after_body_edit_prompt(data: dict, view: str | None = None) -> str:
 
 
 HAILUO_TURN_VIDEO_PROMPT = (
-    "Static camera. Person turns body 180 degrees in place.\n"
-    "The person slowly rotates in place 180 degrees to show their back.\n"
-    "Smooth, natural rotation. No dancing, no arm movements, no extra gestures.\n"
-    "Feet stay in place. Camera is fixed, no zoom, no pan.\n"
-    "Same lighting and background throughout."
+    "A fit fitness model stands naturally and slowly rotates her body 180 degrees in place, "
+    "turning from facing the camera to facing away from the camera. "
+    "Smooth, controlled movement, natural posture, realistic human motion, feet planted firmly on the ground. "
+    "No dancing, no posing, no body twisting, no hip swaying, no arm gestures, no exaggerated motion. "
+    "Arms remain relaxed at the sides. Constant speed rotation. "
+    "Professional fitness photoshoot style. "
+    "Stable camera, no camera movement, no zoom, no shake. "
+    "Anatomically correct motion, seamless transition from the first frame to the last frame."
 )
 
 
@@ -381,22 +384,8 @@ def hailuo_before_turn_prompt(*, dual_frame: bool = True) -> str:
 
 
 def hailuo_after_turn_prompt(data: dict, *, dual_frame: bool = True) -> str:
-    """Hailuo i2v «после»: поворот + after look + зоны (English, <=2000 chars)."""
-    muscles = data.get("muscles", {}) or {}
-    zones = _muscle_zone_brief_hailuo(muscles)
-
-    if dual_frame:
-        frame_hint = "Start: front after-training still. End: back view. Smooth in-place 180° turn."
-    else:
-        frame_hint = "From front after-training still, turn in place to show back."
-
-    prompt = (
-        f"{HAILUO_TURN_VIDEO_PROMPT}\n\n"
-        f"{frame_hint}\n"
-        "Keep the leaner toned 'after training' body from the reference stills; "
-        "do not revert to untrained baseline. Realistic fitness look, not bodybuilding.\n"
-        f"Intensity profile:\n{zones}"
-    )
+    """Hailuo i2v «после»: тот же промпт поворота (dual_frame задаёт start/end кадры)."""
+    prompt = HAILUO_TURN_VIDEO_PROMPT
     if len(prompt) > HAILUO_I2V_PROMPT_MAX:
         prompt = prompt[:HAILUO_I2V_PROMPT_MAX]
     return prompt
